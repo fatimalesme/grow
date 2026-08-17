@@ -199,38 +199,90 @@ function drawTile(tile, col, row) {
   const x = col * TILE_SIZE;
   const y = row * TILE_SIZE;
 
-  // Color base según el tipo de casilla
-  let color = '#7cb342'; // hierba
-  if (tile.type === TILE_TYPES.TILLED) color = '#8d6e63';
-  if (tile.type === TILE_TYPES.PLANTED) color = '#8d6e63';
+  // --- Base: hierba en dos tonos tipo "damero" para que no se vea plana ---
+  const isDark = (col + row) % 2 === 0;
+  let color = isDark ? '#7cb342' : '#8bc34a';
+
+  if (tile.type === TILE_TYPES.TILLED || tile.type === TILE_TYPES.PLANTED) {
+    color = isDark ? '#6d4c41' : '#795548';
+  }
 
   ctx.fillStyle = color;
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
 
+  // Surcos en la tierra labrada, para que se note la textura
+  if (tile.type === TILE_TYPES.TILLED || tile.type === TILE_TYPES.PLANTED) {
+    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+    ctx.lineWidth = 1;
+    for (let i = 6; i < TILE_SIZE; i += 8) {
+      ctx.beginPath();
+      ctx.moveTo(x + 2, y + i);
+      ctx.lineTo(x + TILE_SIZE - 2, y + i);
+      ctx.stroke();
+    }
+  }
+
   // Rejilla sutil para distinguir casillas
-  ctx.strokeStyle = 'rgba(0,0,0,0.1)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
   ctx.strokeRect(x, y, TILE_SIZE, TILE_SIZE);
 
-  // Si está regada, un tinte azulado encima
+  // Si está regada, un tinte azulado brillante encima
   if (tile.watered) {
-    ctx.fillStyle = 'rgba(33, 150, 243, 0.25)';
+    ctx.fillStyle = 'rgba(33, 150, 243, 0.3)';
     ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
   }
 
   // Dibujar la planta según su etapa de crecimiento
   if (tile.type === TILE_TYPES.PLANTED) {
-    const progress = tile.growthStage / DAYS_TO_GROW; // 0 a 1
-    const plantSize = TILE_SIZE * 0.2 + TILE_SIZE * 0.6 * progress;
+    drawPlant(tile, x, y);
+  }
+}
 
-    ctx.fillStyle = tile.growthStage >= DAYS_TO_GROW ? '#ff9800' : '#4caf50';
+// Dibuja una plantita con tallo + hojas, y un efecto de "pulso" cuando ya
+// está lista para cosechar (usa performance.now() para animar sin frameworks)
+function drawPlant(tile, x, y) {
+  const progress = tile.growthStage / DAYS_TO_GROW; // 0 a 1
+  const cx = x + TILE_SIZE / 2;
+  const baseY = y + TILE_SIZE - 6;
+  const stemHeight = 4 + 14 * progress;
+  const ready = tile.growthStage >= DAYS_TO_GROW;
+
+  // Tallo
+  ctx.strokeStyle = '#33691e';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(cx, baseY);
+  ctx.lineTo(cx, baseY - stemHeight);
+  ctx.stroke();
+
+  // Hojas (dos óvalos a los lados), solo si ya creció un poco
+  if (progress > 0.25) {
+    ctx.fillStyle = '#66bb6a';
     ctx.beginPath();
-    ctx.arc(
-      x + TILE_SIZE / 2,
-      y + TILE_SIZE / 2,
-      plantSize / 2,
-      0,
-      Math.PI * 2
-    );
+    ctx.ellipse(cx - 4, baseY - stemHeight * 0.6, 4, 2, 0.6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + 4, baseY - stemHeight * 0.6, 4, 2, -0.6, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Fruto en la punta: crece y, si está listo, "pulsa" suavemente
+  let fruitRadius = 3 + 4 * progress;
+  if (ready) {
+    const pulse = Math.sin(performance.now() / 250) * 1.2;
+    fruitRadius += pulse;
+  }
+
+  ctx.fillStyle = ready ? '#ff9800' : '#a5d6a7';
+  ctx.beginPath();
+  ctx.arc(cx, baseY - stemHeight, fruitRadius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Brillito extra cuando está lista, para que llame la atención
+  if (ready) {
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.arc(cx - fruitRadius / 3, baseY - stemHeight - fruitRadius / 3, 1.3, 0, Math.PI * 2);
     ctx.fill();
   }
 }
@@ -238,24 +290,58 @@ function drawTile(tile, col, row) {
 function drawPlayer() {
   const x = player.x * TILE_SIZE;
   const y = player.y * TILE_SIZE;
-
-  ctx.fillStyle = '#e53935';
-  ctx.fillRect(x + 4, y + 4, TILE_SIZE - 8, TILE_SIZE - 8);
-
-  // Pequeño indicador de hacia dónde mira el jugador
-  ctx.fillStyle = '#000';
   const cx = x + TILE_SIZE / 2;
   const cy = y + TILE_SIZE / 2;
-  const r = 4;
 
-  if (player.facing === 'up') ctx.fillRect(cx - r / 2, y + 2, r, r);
-  if (player.facing === 'down') ctx.fillRect(cx - r / 2, y + TILE_SIZE - 6, r, r);
-  if (player.facing === 'left') ctx.fillRect(x + 2, cy - r / 2, r, r);
-  if (player.facing === 'right') ctx.fillRect(x + TILE_SIZE - 6, cy - r / 2, r, r);
+  // Sombra elíptica debajo, da sensación de profundidad
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(cx, y + TILE_SIZE - 4, TILE_SIZE / 3, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Cuerpo redondeado en vez de cuadrado
+  ctx.fillStyle = '#e53935';
+  ctx.beginPath();
+  ctx.arc(cx, cy, TILE_SIZE / 2 - 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = '#b71c1c';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Ojitos que miran hacia la dirección en la que te mueves
+  ctx.fillStyle = '#fff';
+  const eyeOffset = 5;
+  let eye1 = { x: cx - eyeOffset, y: cy - 2 };
+  let eye2 = { x: cx + eyeOffset, y: cy - 2 };
+
+  if (player.facing === 'up') { eye1.y -= 3; eye2.y -= 3; }
+  if (player.facing === 'down') { eye1.y += 3; eye2.y += 3; }
+  if (player.facing === 'left') { eye1.x -= 3; eye2.x -= 3; }
+  if (player.facing === 'right') { eye1.x += 3; eye2.x += 3; }
+
+  [eye1, eye2].forEach((eye) => {
+    ctx.beginPath();
+    ctx.arc(eye.x, eye.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  ctx.fillStyle = '#000';
+  [eye1, eye2].forEach((eye) => {
+    ctx.beginPath();
+    ctx.arc(eye.x, eye.y, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  });
 }
 
 // ==========================================================
 // INICIO
 // ==========================================================
 updateHUD();
-draw();
+
+// Loop de animación: redibuja continuamente para que el pulso del
+// cultivo maduro se vea fluido, sin depender de que pulses una tecla
+function animationLoop() {
+  draw();
+  requestAnimationFrame(animationLoop);
+}
+animationLoop();
