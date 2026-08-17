@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mini Farm Game</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="game-container">
+    <div id="hud">
+      <div id="day-counter">Día 1</div>
+      <div id="inventory">
+        🌱 Semillas: <span id="seed-count">5</span>
+        &nbsp;|&nbsp;
+        🥕 Zanahorias: <span id="crop-count">0</span>
+      </div>
+    </div>
+
+    <canvas id="game-canvas" width="480" height="320"></canvas>
+
+    <div id="instructions">
+      Muévete: <b>Flechas / WASD</b> &nbsp;|&nbsp;
+      Interactuar (labrar / plantar / regar / cosechar): <b>Espacio</b> &nbsp;|&nbsp;
+      Pasar día: <b>N</b>
+    </div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
