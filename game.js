@@ -56,7 +56,52 @@ let day = 1;
 let seedCount = 5;
 let cropCount = 0;
 
-const dayCounterEl = document.getElementById('day-counter');
+// ==========================================================
+// GUARDADO / CARGA
+// ==========================================================
+// Todo el estado del juego se agrupa aquí en UN solo objeto.
+// Eso es lo importante: el día que cambiemos localStorage por una
+// base de datos real (Firebase, Supabase...), esta es la única
+// función que hay que tocar, el resto del juego no se entera.
+const SAVE_KEY = 'grow-farm-save';
+
+function getGameStateAsObject() {
+  return {
+    map,
+    player,
+    day,
+    seedCount,
+    cropCount,
+  };
+}
+
+function saveGame() {
+  const state = getGameStateAsObject();
+  localStorage.setItem(SAVE_KEY, JSON.stringify(state));
+}
+
+function loadGame() {
+  const raw = localStorage.getItem(SAVE_KEY);
+  if (!raw) return false; // no había partida guardada
+
+  try {
+    const state = JSON.parse(raw);
+
+    // Restauramos cada pieza del estado global
+    map = state.map;
+    player.x = state.player.x;
+    player.y = state.player.y;
+    player.facing = state.player.facing;
+    day = state.day;
+    seedCount = state.seedCount;
+    cropCount = state.cropCount;
+
+    return true;
+  } catch (err) {
+    console.error('No se pudo cargar la partida guardada:', err);
+    return false;
+  }
+}const dayCounterEl = document.getElementById('day-counter');
 const seedCountEl = document.getElementById('seed-count');
 const cropCountEl = document.getElementById('crop-count');
 
@@ -145,6 +190,7 @@ function interactWithTile() {
       tile.watered = false;
       seedCount--;
       updateHUD();
+      saveGame();
     }
     return;
   }
@@ -157,9 +203,11 @@ function interactWithTile() {
       tile.growthStage = 0;
       tile.watered = false;
       updateHUD();
+      saveGame();
     } else {
       // Regar (solo afecta si aún no está lista)
       tile.watered = true;
+      saveGame();
     }
     return;
   }
@@ -178,6 +226,7 @@ function nextDay() {
     }
   }
   updateHUD();
+  saveGame();
 }
 
 // ==========================================================
@@ -336,7 +385,23 @@ function drawPlayer() {
 // ==========================================================
 // INICIO
 // ==========================================================
+loadGame(); // si había partida guardada, la restauramos
 updateHUD();
+
+document.getElementById('reset-btn').addEventListener('click', () => {
+  const confirmReset = confirm('¿Seguro que quieres borrar tu partida y empezar de nuevo?');
+  if (!confirmReset) return;
+
+  localStorage.removeItem(SAVE_KEY);
+  map = createMap();
+  player.x = 5;
+  player.y = 5;
+  player.facing = 'down';
+  day = 1;
+  seedCount = 5;
+  cropCount = 0;
+  updateHUD();
+});
 
 // Loop de animación: redibuja continuamente para que el pulso del
 // cultivo maduro se vea fluido, sin depender de que pulses una tecla
