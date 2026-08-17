@@ -55,6 +55,11 @@ const player = {
 let day = 1;
 let seedCount = 5;
 let cropCount = 0;
+let coins = 10;
+
+// Precio de una semilla y cuánto vale cada zanahoria cosechada
+const SEED_PRICE = 3;
+const CROP_VALUE = 4;
 
 // ==========================================================
 // GUARDADO / CARGA
@@ -72,6 +77,7 @@ function getGameStateAsObject() {
     day,
     seedCount,
     cropCount,
+    coins,
   };
 }
 
@@ -95,6 +101,7 @@ function loadGame() {
     day = state.day;
     seedCount = state.seedCount;
     cropCount = state.cropCount;
+    coins = state.coins ?? 10; // ?? por si la partida guardada es de antes de tener monedas
 
     return true;
   } catch (err) {
@@ -104,11 +111,17 @@ function loadGame() {
 }const dayCounterEl = document.getElementById('day-counter');
 const seedCountEl = document.getElementById('seed-count');
 const cropCountEl = document.getElementById('crop-count');
+const coinCountEl = document.getElementById('coin-count');
+const buySeedBtn = document.getElementById('buy-seed-btn');
 
 function updateHUD() {
   dayCounterEl.textContent = `Día ${day}`;
   seedCountEl.textContent = seedCount;
   cropCountEl.textContent = cropCount;
+  coinCountEl.textContent = coins;
+
+  // Desactivamos el botón de compra si no llegan las monedas
+  buySeedBtn.disabled = coins < SEED_PRICE;
 }
 
 // ==========================================================
@@ -199,6 +212,7 @@ function interactWithTile() {
     if (tile.growthStage >= DAYS_TO_GROW) {
       // Cosechar
       cropCount++;
+      coins += CROP_VALUE;
       tile.type = TILE_TYPES.GRASS;
       tile.growthStage = 0;
       tile.watered = false;
@@ -400,7 +414,17 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   day = 1;
   seedCount = 5;
   cropCount = 0;
+  coins = 10;
   updateHUD();
+});
+
+buySeedBtn.addEventListener('click', () => {
+  if (coins < SEED_PRICE) return; // por seguridad, aunque el botón ya se desactiva
+
+  coins -= SEED_PRICE;
+  seedCount++;
+  updateHUD();
+  saveGame();
 });
 
 // Loop de animación: redibuja continuamente para que el pulso del

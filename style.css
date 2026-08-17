@@ -61,3 +61,35 @@ body {
 #reset-btn:hover {
   background: #d32f2f;
 }
+
+#shop {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #33691e;
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+#buy-seed-btn {
+  background: #fdd835;
+  color: #333;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#buy-seed-btn:hover {
+  background: #ffee58;
+}
+
+#buy-seed-btn:disabled {
+  background: #9e9e9e;
+  color: #616161;
+  cursor: not-allowed;
+}
