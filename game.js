@@ -108,20 +108,56 @@ function loadGame() {
     console.error('No se pudo cargar la partida guardada:', err);
     return false;
   }
-}const dayCounterEl = document.getElementById('day-counter');
+}const dayCounterEl = document.getElementById('day-number');
+const timeIconEl = document.getElementById('time-icon');
 const seedCountEl = document.getElementById('seed-count');
 const cropCountEl = document.getElementById('crop-count');
 const coinCountEl = document.getElementById('coin-count');
 const buySeedBtn = document.getElementById('buy-seed-btn');
 
 function updateHUD() {
-  dayCounterEl.textContent = `Día ${day}`;
+  dayCounterEl.textContent = day;
   seedCountEl.textContent = seedCount;
   cropCountEl.textContent = cropCount;
   coinCountEl.textContent = coins;
 
   // Desactivamos el botón de compra si no llegan las monedas
   buySeedBtn.disabled = coins < SEED_PRICE;
+}
+
+// ==========================================================
+// CICLO DE DÍA Y NOCHE (visual, en tiempo real)
+// ==========================================================
+// Un ciclo completo (amanecer -> mediodía -> atardecer -> noche) dura
+// DAY_CYCLE_MS milisegundos reales. Es solo ambientación: no tiene que
+// ver con el contador de "Día X" (ese avanza al pulsar N y hace crecer
+// los cultivos). Esto es puramente para que se vea "vivo".
+const DAY_CYCLE_MS = 30000; // 30 segundos = un ciclo completo
+
+// Devuelve cuánto de "noche" hay ahora mismo: 1 = noche cerrada, 0 = pleno día
+function getNightAmount() {
+  const phase = (performance.now() % DAY_CYCLE_MS) / DAY_CYCLE_MS; // 0 a 1
+  // coseno para que la transición sea suave (no lineal, más natural)
+  return (Math.cos(phase * Math.PI * 2) + 1) / 2;
+}
+
+// Dibuja el "cielo" encima de todo: un tinte oscuro/azulado de noche,
+// y uno anaranjado suave en las transiciones (amanecer/atardecer)
+function drawSkyOverlay() {
+  const night = getNightAmount(); // 0 a 1
+
+  // Tinte azul oscuro de noche
+  ctx.fillStyle = `rgba(20, 24, 60, ${night * 0.55})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Tinte anaranjado en las transiciones (más fuerte cuando "night"
+  // ronda 0.5, o sea ni de día ni de noche del todo)
+  const dawnDusk = 1 - Math.abs(night - 0.5) * 2; // pico en night=0.5
+  ctx.fillStyle = `rgba(255, 140, 60, ${dawnDusk * 0.15})`;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Icono del HUD según si es de noche o de día
+  timeIconEl.textContent = night > 0.5 ? '🌙' : '☀️';
 }
 
 // ==========================================================
@@ -256,6 +292,7 @@ function draw() {
   }
 
   drawPlayer();
+  drawSkyOverlay();
 }
 
 function drawTile(tile, col, row) {
