@@ -35,11 +35,36 @@ function createMap() {
         type: TILE_TYPES.GRASS,
         watered: false,
         growthStage: 0, // 0 = recién plantado, DAYS_TO_GROW = listo para cosechar
+        decoration: null, // 'tree' | 'rock' | null
       });
     }
     map.push(rowArr);
   }
+
+  scatterDecorations(map);
   return map;
+}
+
+// Reparte árboles y piedras al azar sobre la hierba, dejando libre
+// una zona alrededor del punto de inicio del jugador para que no
+// aparezcas encerrada
+function scatterDecorations(map) {
+  const safeZone = 2; // radio libre alrededor de (5,5), la posición inicial
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const nearStart =
+        Math.abs(col - 5) <= safeZone && Math.abs(row - 5) <= safeZone;
+      if (nearStart) continue;
+
+      const roll = Math.random();
+      if (roll < 0.08) {
+        map[row][col].decoration = 'tree';
+      } else if (roll < 0.13) {
+        map[row][col].decoration = 'rock';
+      }
+    }
+  }
 }
 
 let map = createMap();
@@ -198,11 +223,15 @@ function movePlayer(dx, dy, direction) {
   const newX = player.x + dx;
   const newY = player.y + dy;
 
-  // Comprobamos límites del mapa antes de mover
-  if (newX >= 0 && newX < COLS && newY >= 0 && newY < ROWS) {
-    player.x = newX;
-    player.y = newY;
-  }
+  // Comprobamos límites del mapa
+  if (newX < 0 || newX >= COLS || newY < 0 || newY >= ROWS) return;
+
+  // No se puede caminar sobre árboles ni piedras
+  const targetTile = map[newY][newX];
+  if (targetTile.decoration) return;
+
+  player.x = newX;
+  player.y = newY;
 }
 
 // Devuelve la casilla a la que el jugador está mirando
@@ -224,6 +253,9 @@ function getFacingTile() {
 function interactWithTile() {
   const tile = getFacingTile();
   if (!tile) return;
+
+  // Si hay un árbol o piedra, esa casilla no se puede labrar
+  if (tile.decoration) return;
 
   if (tile.type === TILE_TYPES.GRASS) {
     // Labrar tierra
@@ -336,6 +368,58 @@ function drawTile(tile, col, row) {
   if (tile.type === TILE_TYPES.PLANTED) {
     drawPlant(tile, x, y);
   }
+
+  // Dibujar decoración (árbol o piedra) encima de la hierba
+  if (tile.decoration === 'tree') {
+    drawTree(x, y);
+  } else if (tile.decoration === 'rock') {
+    drawRock(x, y);
+  }
+}
+
+// Árbol simple: tronco marrón + copa en dos círculos superpuestos
+function drawTree(x, y) {
+  const cx = x + TILE_SIZE / 2;
+
+  // Sombra
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(cx, y + TILE_SIZE - 3, 10, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Tronco
+  ctx.fillStyle = '#6d4c41';
+  ctx.fillRect(cx - 3, y + TILE_SIZE - 14, 6, 12);
+
+  // Copa (dos círculos para que no se vea tan perfecta/redonda)
+  ctx.fillStyle = '#2e7d32';
+  ctx.beginPath();
+  ctx.arc(cx - 4, y + 10, 9, 0, Math.PI * 2);
+  ctx.arc(cx + 4, y + 8, 9, 0, Math.PI * 2);
+  ctx.arc(cx, y + 14, 10, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+// Piedra: un par de formas grises superpuestas para que no sea un círculo perfecto
+function drawRock(x, y) {
+  const cx = x + TILE_SIZE / 2;
+  const cy = y + TILE_SIZE / 2 + 4;
+
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(cx, y + TILE_SIZE - 4, 9, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#9e9e9e';
+  ctx.beginPath();
+  ctx.arc(cx - 3, cy, 6, 0, Math.PI * 2);
+  ctx.arc(cx + 4, cy + 1, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#bdbdbd';
+  ctx.beginPath();
+  ctx.arc(cx - 4, cy - 2, 2.5, 0, Math.PI * 2);
+  ctx.fill();
 }
 
 // Dibuja una plantita con tallo + hojas, y un efecto de "pulso" cuando ya
