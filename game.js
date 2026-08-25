@@ -21,8 +21,31 @@ const TILE_TYPES = {
   PLANTED: 'planted',
 };
 
-// Cuántos "días" tarda un cultivo en estar listo
-const DAYS_TO_GROW = 3;
+// --- Tipos de cultivo disponibles ---
+// Cada uno tiene su propio tiempo de crecimiento, precio de semilla,
+// y cuánto paga al venderlo. Esto es lo que le da algo de estrategia
+// al juego: la zanahoria es rápida y segura, la calabaza tarda más
+// pero da más beneficio por unidad.
+const CROP_TYPES = {
+  carrot: {
+    name: 'Zanahoria',
+    emoji: '🥕',
+    growDays: 3,
+    seedPrice: 3,
+    sellValue: 4,
+    matureColor: '#ff9800',
+    youngColor: '#a5d6a7',
+  },
+  pumpkin: {
+    name: 'Calabaza',
+    emoji: '🎃',
+    growDays: 6,
+    seedPrice: 6,
+    sellValue: 12,
+    matureColor: '#e65100',
+    youngColor: '#aed581',
+  },
+};
 
 // --- Estructura del mapa ---
 // Creamos una matriz de objetos, uno por casilla
@@ -34,7 +57,8 @@ function createMap() {
       rowArr.push({
         type: TILE_TYPES.GRASS,
         watered: false,
-        growthStage: 0, // 0 = recién plantado, DAYS_TO_GROW = listo para cosechar
+        growthStage: 0, // 0 = recién plantado, hasta growDays del cultivo = listo
+        cropType: null, // 'carrot' | 'pumpkin' | null (qué está plantado aquí)
         decoration: null, // 'tree' | 'rock' | null
       });
     }
@@ -78,13 +102,11 @@ const player = {
 
 // --- Estado general del juego ---
 let day = 1;
-let seedCount = 5;
+let seedCounts = { carrot: 5, pumpkin: 0 }; // cuántas semillas de cada tipo tenemos
+let selectedSeed = 'carrot'; // qué semilla se planta al pulsar Espacio
 let cropCount = 0;
 let coins = 10;
-
-// Precio de una semilla y cuánto vale cada zanahoria cosechada
-const SEED_PRICE = 3;
-const CROP_VALUE = 4;
+let streak = 0; // racha de días JUGADOS SEGUIDOS (fechas reales, no días del juego)
 
 // ==========================================================
 // GUARDADO / CARGA
@@ -100,9 +122,11 @@ function getGameStateAsObject() {
     map,
     player,
     day,
-    seedCount,
+    seedCounts,
     cropCount,
     coins,
+    streak,
+    lastPlayedDate,
   };
 }
 
@@ -124,30 +148,109 @@ function loadGame() {
     player.y = state.player.y;
     player.facing = state.player.facing;
     day = state.day;
-    seedCount = state.seedCount;
     cropCount = state.cropCount;
-    coins = state.coins ?? 10; // ?? por si la partida guardada es de antes de tener monedas
+    coins = state.coins ?? 10;
+    streak = state.streak ?? 0;
+    lastPlayedDate = state.lastPlayedDate ?? null;
+
+    // seedCounts es nuevo: si la partida guardada es de una versión
+    // vieja (tenía "seedCount" a secas), lo convertimos al nuevo formato
+    if (state.seedCounts) {
+      seedCounts = state.seedCounts;
+    } else if (typeof state.seedCount === 'number') {
+      seedCounts = { carrot: state.seedCount, pumpkin: 0 };
+    }
+
+    // Asegurar que las casillas viejas (de antes de tener cropType)
+    // tengan el campo, para que no quede undefined
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < COLS; col++) {
+        const tile = map[row][col];
+        if (tile.type === TILE_TYPES.PLANTED && !tile.cropType) {
+          tile.cropType = 'carrot';
+        }
+      }
+    }
 
     return true;
   } catch (err) {
     console.error('No se pudo cargar la partida guardada:', err);
     return false;
   }
-}const dayCounterEl = document.getElementById('day-number');
+}
+
+// ==========================================================
+// RACHA DIARIA (streak) — el gancho de "vuelve mañana"
+// ==========================================================
+// Comparamos la fecha real de hoy con la última vez que jugaste.
+// - Si es el mismo día: no pasa nada, ya contaste hoy.
+// - Si es justo el día siguiente: la racha sube y te doy monedas de bonus.
+// - Si dejaste pasar más de un día: la racha se rompe y vuelve a 1.
+let lastPlayedDate = null;
+let streakMessage = null; // texto a mostrar en el aviso emergente, o null
+
+function todayString() {
+  return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
+}
+
+function checkDailyStreak() {
+  const today = todayString();
+
+  if (lastPlayedDate === today) {
+    return; // ya jugaste hoy, no hacemos nada más
+  }
+
+  if (lastPlayedDate === null) {
+    // Primera vez que se juega nunca
+    streak = 1;
+  } else {
+    const prev = new Date(lastPlayedDate);
+    const curr = new Date(today);
+    const diffDays = Math.round((curr - prev) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 1) {
+      // Volviste justo al día siguiente: ¡racha!
+      streak++;
+      const bonus = streak * 5;
+      coins += bonus;
+      streakMessage = `🔥 ¡Racha de ${streak} días! +${bonus} monedas`;
+    } else {
+      // Dejaste pasar más de un día: se rompe la racha
+      streak = 1;
+      streakMessage = 'Racha reiniciada. ¡Vuelve mañana para empezar otra!';
+    }
+  }
+
+  lastPlayedDate = today;
+  saveGame();
+}
+
+const dayCounterEl = document.getElementById('day-number');
 const timeIconEl = document.getElementById('time-icon');
-const seedCountEl = document.getElementById('seed-count');
+const carrotSeedCountEl = document.getElementById('carrot-seed-count');
+const pumpkinSeedCountEl = document.getElementById('pumpkin-seed-count');
 const cropCountEl = document.getElementById('crop-count');
 const coinCountEl = document.getElementById('coin-count');
-const buySeedBtn = document.getElementById('buy-seed-btn');
+const streakCountEl = document.getElementById('streak-count');
+const buyCarrotBtn = document.getElementById('buy-carrot-btn');
+const buyPumpkinBtn = document.getElementById('buy-pumpkin-btn');
+const seedSelectorEls = document.querySelectorAll('.seed-option');
 
 function updateHUD() {
   dayCounterEl.textContent = day;
-  seedCountEl.textContent = seedCount;
+  carrotSeedCountEl.textContent = seedCounts.carrot;
+  pumpkinSeedCountEl.textContent = seedCounts.pumpkin;
   cropCountEl.textContent = cropCount;
   coinCountEl.textContent = coins;
+  streakCountEl.textContent = streak;
 
-  // Desactivamos el botón de compra si no llegan las monedas
-  buySeedBtn.disabled = coins < SEED_PRICE;
+  buyCarrotBtn.disabled = coins < CROP_TYPES.carrot.seedPrice;
+  buyPumpkinBtn.disabled = coins < CROP_TYPES.pumpkin.seedPrice;
+
+  // Resaltar visualmente qué semilla está seleccionada para plantar
+  seedSelectorEls.forEach((el) => {
+    el.classList.toggle('selected', el.dataset.crop === selectedSeed);
+  });
 }
 
 // ==========================================================
@@ -214,6 +317,14 @@ document.addEventListener('keydown', (e) => {
     case 'N':
       nextDay();
       break;
+    case '1':
+      selectedSeed = 'carrot';
+      updateHUD();
+      break;
+    case '2':
+      selectedSeed = 'pumpkin';
+      updateHUD();
+      break;
   }
   draw();
 });
@@ -264,12 +375,13 @@ function interactWithTile() {
   }
 
   if (tile.type === TILE_TYPES.TILLED) {
-    // Plantar semilla (si tenemos alguna)
-    if (seedCount > 0) {
+    // Plantar la semilla actualmente seleccionada (si tenemos alguna)
+    if (seedCounts[selectedSeed] > 0) {
       tile.type = TILE_TYPES.PLANTED;
+      tile.cropType = selectedSeed;
       tile.growthStage = 0;
       tile.watered = false;
-      seedCount--;
+      seedCounts[selectedSeed]--;
       updateHUD();
       saveGame();
     }
@@ -277,11 +389,14 @@ function interactWithTile() {
   }
 
   if (tile.type === TILE_TYPES.PLANTED) {
-    if (tile.growthStage >= DAYS_TO_GROW) {
-      // Cosechar
+    const crop = CROP_TYPES[tile.cropType];
+
+    if (tile.growthStage >= crop.growDays) {
+      // Cosechar: cada cultivo paga distinto según su sellValue
       cropCount++;
-      coins += CROP_VALUE;
+      coins += crop.sellValue;
       tile.type = TILE_TYPES.GRASS;
+      tile.cropType = null;
       tile.growthStage = 0;
       tile.watered = false;
       updateHUD();
@@ -302,7 +417,8 @@ function nextDay() {
     for (let col = 0; col < COLS; col++) {
       const tile = map[row][col];
       if (tile.type === TILE_TYPES.PLANTED && tile.watered) {
-        tile.growthStage = Math.min(tile.growthStage + 1, DAYS_TO_GROW);
+        const maxGrowth = CROP_TYPES[tile.cropType].growDays;
+        tile.growthStage = Math.min(tile.growthStage + 1, maxGrowth);
       }
       tile.watered = false; // hay que regar cada día para seguir creciendo
     }
@@ -425,11 +541,12 @@ function drawRock(x, y) {
 // Dibuja una plantita con tallo + hojas, y un efecto de "pulso" cuando ya
 // está lista para cosechar (usa performance.now() para animar sin frameworks)
 function drawPlant(tile, x, y) {
-  const progress = tile.growthStage / DAYS_TO_GROW; // 0 a 1
+  const crop = CROP_TYPES[tile.cropType];
+  const progress = tile.growthStage / crop.growDays; // 0 a 1
   const cx = x + TILE_SIZE / 2;
   const baseY = y + TILE_SIZE - 6;
   const stemHeight = 4 + 14 * progress;
-  const ready = tile.growthStage >= DAYS_TO_GROW;
+  const ready = tile.growthStage >= crop.growDays;
 
   // Tallo
   ctx.strokeStyle = '#33691e';
@@ -450,14 +567,17 @@ function drawPlant(tile, x, y) {
     ctx.fill();
   }
 
-  // Fruto en la punta: crece y, si está listo, "pulsa" suavemente
-  let fruitRadius = 3 + 4 * progress;
+  // Fruto en la punta: crece y, si está listo, "pulsa" suavemente.
+  // La calabaza se dibuja un poco más grande que la zanahoria para
+  // que se note la diferencia entre cultivos de un vistazo.
+  const sizeBonus = tile.cropType === 'pumpkin' ? 1.4 : 1;
+  let fruitRadius = (3 + 4 * progress) * sizeBonus;
   if (ready) {
     const pulse = Math.sin(performance.now() / 250) * 1.2;
     fruitRadius += pulse;
   }
 
-  ctx.fillStyle = ready ? '#ff9800' : '#a5d6a7';
+  ctx.fillStyle = ready ? crop.matureColor : crop.youngColor;
   ctx.beginPath();
   ctx.arc(cx, baseY - stemHeight, fruitRadius, 0, Math.PI * 2);
   ctx.fill();
@@ -521,7 +641,9 @@ function drawPlayer() {
 // INICIO
 // ==========================================================
 loadGame(); // si había partida guardada, la restauramos
+checkDailyStreak(); // revisamos si hoy suma o rompe la racha
 updateHUD();
+showStreakMessageIfAny();
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   const confirmReset = confirm('¿Seguro que quieres borrar tu partida y empezar de nuevo?');
@@ -533,20 +655,50 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   player.y = 5;
   player.facing = 'down';
   day = 1;
-  seedCount = 5;
+  seedCounts = { carrot: 5, pumpkin: 0 };
+  selectedSeed = 'carrot';
   cropCount = 0;
   coins = 10;
+  streak = 0;
+  lastPlayedDate = null;
   updateHUD();
 });
 
-buySeedBtn.addEventListener('click', () => {
-  if (coins < SEED_PRICE) return; // por seguridad, aunque el botón ya se desactiva
+buyCarrotBtn.addEventListener('click', () => buySeed('carrot'));
+buyPumpkinBtn.addEventListener('click', () => buySeed('pumpkin'));
 
-  coins -= SEED_PRICE;
-  seedCount++;
+function buySeed(type) {
+  const price = CROP_TYPES[type].seedPrice;
+  if (coins < price) return; // por seguridad, aunque el botón ya se desactiva
+
+  coins -= price;
+  seedCounts[type]++;
   updateHUD();
   saveGame();
+}
+
+// Click en las etiquetas de semilla (1/2 en el HUD) también selecciona
+seedSelectorEls.forEach((el) => {
+  el.addEventListener('click', () => {
+    selectedSeed = el.dataset.crop;
+    updateHUD();
+  });
 });
+
+// Muestra el aviso emergente de racha (si lo hay) y lo hace desaparecer solo
+function showStreakMessageIfAny() {
+  if (!streakMessage) return;
+
+  const toast = document.getElementById('streak-toast');
+  toast.textContent = streakMessage;
+  toast.classList.add('visible');
+
+  setTimeout(() => {
+    toast.classList.remove('visible');
+  }, 4000);
+
+  streakMessage = null;
+}
 
 // Loop de animación: redibuja continuamente para que el pulso del
 // cultivo maduro se vea fluido, sin depender de que pulses una tecla

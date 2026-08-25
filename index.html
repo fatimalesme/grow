@@ -8,22 +8,31 @@
 </head>
 <body>
   <div id="game-container">
+    <div id="streak-toast"></div>
+
     <div id="hud">
       <div id="day-counter"><span id="time-icon">☀️</span> Día <span id="day-number">1</span></div>
       <div id="inventory">
-        🌱 Semillas: <span id="seed-count">5</span>
-        &nbsp;|&nbsp;
-        🥕 Zanahorias: <span id="crop-count">0</span>
+        🥕 Cosechado: <span id="crop-count">0</span>
         &nbsp;|&nbsp;
         🪙 Monedas: <span id="coin-count">10</span>
+        &nbsp;|&nbsp;
+        🔥 Racha: <span id="streak-count">0</span>
       </div>
     </div>
 
     <canvas id="game-canvas" width="480" height="320"></canvas>
 
+    <div id="seed-selector">
+      <span>Semilla a plantar (o pulsa 1 / 2):</span>
+      <button class="seed-option" data-crop="carrot">🥕 Zanahoria (<span id="carrot-seed-count">5</span>)</button>
+      <button class="seed-option" data-crop="pumpkin">🎃 Calabaza (<span id="pumpkin-seed-count">0</span>)</button>
+    </div>
+
     <div id="shop">
       <span>Tienda:</span>
-      <button id="buy-seed-btn">Comprar semilla (3 🪙)</button>
+      <button id="buy-carrot-btn">🥕 Semilla zanahoria (3 🪙)</button>
+      <button id="buy-pumpkin-btn">🎃 Semilla calabaza (6 🪙)</button>
     </div>
 
     <div id="instructions">
