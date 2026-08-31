@@ -60,6 +60,10 @@ function createMap() {
         growthStage: 0, // 0 = recién plantado, hasta growDays del cultivo = listo
         cropType: null, // 'carrot' | 'pumpkin' | null (qué está plantado aquí)
         decoration: null, // 'tree' | 'rock' | null
+        // "Semilla" fija para las matitas de hierba decorativas: se
+        // calcula UNA vez al crear el mapa, no en cada frame, para que
+        // no parpadeen/cambien de sitio constantemente al redibujar
+        grassSeed: Math.random(),
       });
     }
     map.push(rowArr);
@@ -92,6 +96,83 @@ function scatterDecorations(map) {
 }
 
 let map = createMap();
+
+// ==========================================================
+// PARTÍCULAS Y TEXTO FLOTANTE
+// ==========================================================
+// Dos listas de "efectos temporales": partículas (polvo, gotas,
+// brillos) y textos flotantes (+5 XP, +12 🪙...). Cada una vive un
+// tiempo limitado y se dibuja/actualiza en cada frame del loop.
+let particles = [];
+let floatingTexts = [];
+
+// Crea un pequeño estallido de partículas en el centro de una casilla
+function spawnParticles(col, row, color, count = 8) {
+  const cx = col * TILE_SIZE + TILE_SIZE / 2;
+  const cy = row * TILE_SIZE + TILE_SIZE / 2;
+
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 0.5 + Math.random() * 1.5;
+    particles.push({
+      x: cx,
+      y: cy,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - 0.5, // un poco hacia arriba
+      life: 1, // 1 = recién nacida, 0 = muerta
+      color,
+      size: 1.5 + Math.random() * 2,
+    });
+  }
+}
+
+// Texto que sube flotando y se desvanece (para +XP, +monedas, etc.)
+function spawnFloatingText(col, row, text, color = '#fff') {
+  floatingTexts.push({
+    x: col * TILE_SIZE + TILE_SIZE / 2,
+    y: row * TILE_SIZE,
+    text,
+    color,
+    life: 1,
+  });
+}
+
+// Actualiza posiciones y desvanece con el paso del tiempo
+function updateEffects() {
+  particles.forEach((p) => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05; // gravedad ligera
+    p.life -= 0.03;
+  });
+  particles = particles.filter((p) => p.life > 0);
+
+  floatingTexts.forEach((t) => {
+    t.y -= 0.4; // sube
+    t.life -= 0.015;
+  });
+  floatingTexts = floatingTexts.filter((t) => t.life > 0);
+}
+
+function drawEffects() {
+  particles.forEach((p) => {
+    ctx.globalAlpha = Math.max(p.life, 0);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
+  floatingTexts.forEach((t) => {
+    ctx.globalAlpha = Math.max(t.life, 0);
+    ctx.fillStyle = t.color;
+    ctx.font = 'bold 12px "VT323", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(t.text, t.x, t.y);
+  });
+  ctx.globalAlpha = 1;
+}
 
 // ==========================================================
 // SONIDO (generado por código, sin archivos de audio externos)
@@ -479,6 +560,20 @@ function drawSkyOverlay() {
   timeIconEl.textContent = night > 0.5 ? '🌙' : '☀️';
 }
 
+// Oscurece ligeramente las esquinas del canvas con un degradado radial,
+// para dar sensación de profundidad (efecto "viñeta" típico en juegos)
+function drawVignette() {
+  const gradient = ctx.createRadialGradient(
+    canvas.width / 2, canvas.height / 2, canvas.height / 3,
+    canvas.width / 2, canvas.height / 2, canvas.width / 1.1
+  );
+  gradient.addColorStop(0, 'rgba(0,0,0,0)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0.35)');
+
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+}
+
 // ==========================================================
 // INPUT: mover jugador e interactuar
 // ==========================================================
@@ -561,8 +656,9 @@ function updatePlayerVisualPosition() {
   if (Math.abs(targetY - player.pixelY) < 0.5) player.pixelY = targetY;
 }
 
-// Devuelve la casilla a la que el jugador está mirando
-function getFacingTile() {
+// Devuelve las coordenadas (columna, fila) de la casilla a la que
+// el jugador está mirando, o null si se sale del mapa
+function getFacingCoords() {
   let tx = player.x;
   let ty = player.y;
 
@@ -572,14 +668,22 @@ function getFacingTile() {
   if (player.facing === 'right') tx += 1;
 
   if (tx < 0 || tx >= COLS || ty < 0 || ty >= ROWS) return null;
-  return map[ty][tx];
+  return { col: tx, row: ty };
+}
+
+// Devuelve la casilla a la que el jugador está mirando
+function getFacingTile() {
+  const coords = getFacingCoords();
+  if (!coords) return null;
+  return map[coords.row][coords.col];
 }
 
 // Acción principal: labrar / plantar / regar / cosechar
 // según en qué estado esté la casilla a la que miramos
 function interactWithTile() {
-  const tile = getFacingTile();
-  if (!tile) return;
+  const coords = getFacingCoords();
+  if (!coords) return;
+  const tile = map[coords.row][coords.col];
 
   // Si hay un árbol o piedra, esa casilla no se puede labrar
   if (tile.decoration) return;
@@ -589,6 +693,8 @@ function interactWithTile() {
     tile.type = TILE_TYPES.TILLED;
     sounds.till();
     addXP(XP_REWARDS.till);
+    spawnParticles(coords.col, coords.row, '#6d4c41', 6); // polvo marrón
+    spawnFloatingText(coords.col, coords.row, `+${XP_REWARDS.till} XP`, '#b3e5fc');
     saveGame();
     return;
   }
@@ -603,6 +709,8 @@ function interactWithTile() {
       seedCounts[selectedSeed]--;
       sounds.plant();
       addXP(XP_REWARDS.plant);
+      spawnParticles(coords.col, coords.row, '#66bb6a', 6); // motitas verdes
+      spawnFloatingText(coords.col, coords.row, `+${XP_REWARDS.plant} XP`, '#b3e5fc');
       updateHUD();
       saveGame();
     }
@@ -625,6 +733,8 @@ function interactWithTile() {
 
       sounds.harvest();
       addXP(XP_REWARDS.harvest);
+      spawnParticles(coords.col, coords.row, '#ffd54f', 14); // brillo dorado, más partículas por ser la acción "premio"
+      spawnFloatingText(coords.col, coords.row, `+${crop.sellValue} 🪙`, '#ffd54f');
       updateHUD();
       checkQuests();
       saveGame();
@@ -633,6 +743,7 @@ function interactWithTile() {
       tile.watered = true;
       sounds.water();
       addXP(XP_REWARDS.water);
+      spawnParticles(coords.col, coords.row, '#4fc3f7', 6); // gotitas azules
       saveGame();
     }
     return;
@@ -670,6 +781,8 @@ function draw() {
 
   drawPlayer();
   drawSkyOverlay();
+  drawEffects();
+  drawVignette();
 }
 
 function drawTile(tile, col, row) {
@@ -686,6 +799,25 @@ function drawTile(tile, col, row) {
 
   ctx.fillStyle = color;
   ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+
+  // Matitas de hierba decorativas (solo sobre hierba sin labrar).
+  // Usamos tile.grassSeed (fijo) para que la posición no cambie cada frame.
+  if (tile.type === TILE_TYPES.GRASS && !tile.decoration) {
+    ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.1)';
+    ctx.lineWidth = 1;
+    const seed = tile.grassSeed;
+    for (let i = 0; i < 3; i++) {
+      // Usamos el seed + i para variar cada matita de forma consistente
+      const fx = x + ((seed * (i + 3) * 97) % TILE_SIZE);
+      const fy = y + ((seed * (i + 5) * 53) % TILE_SIZE);
+      ctx.beginPath();
+      ctx.moveTo(fx, fy + 4);
+      ctx.lineTo(fx + 2, fy - 2);
+      ctx.moveTo(fx + 2, fy + 4);
+      ctx.lineTo(fx + 4, fy - 2);
+      ctx.stroke();
+    }
+  }
 
   // Surcos en la tierra labrada, para que se note la textura
   if (tile.type === TILE_TYPES.TILLED || tile.type === TILE_TYPES.PLANTED) {
@@ -926,6 +1058,7 @@ seedSelectorEls.forEach((el) => {
 // cultivo maduro se vea fluido, sin depender de que pulses una tecla
 function animationLoop() {
   updatePlayerVisualPosition();
+  updateEffects();
   draw();
   requestAnimationFrame(animationLoop);
 }
