@@ -93,10 +93,57 @@ function scatterDecorations(map) {
 
 let map = createMap();
 
+// ==========================================================
+// SONIDO (generado por código, sin archivos de audio externos)
+// ==========================================================
+// Usamos la Web Audio API para crear "pitidos" cortos. Es la forma
+// más simple de tener sonido sin tener que buscar/alojar archivos .mp3.
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function playSound(frequency, duration = 0.1, type = 'sine') {
+  const oscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+
+  oscillator.type = type; // 'sine' = tono suave, 'square' = más "retro"
+  oscillator.frequency.value = frequency;
+
+  // El volumen baja poco a poco (fade out) para que no suene un "clic" seco
+  gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  oscillator.start();
+  oscillator.stop(audioCtx.currentTime + duration);
+}
+
+// Sonidos concretos para cada acción del juego
+const sounds = {
+  till: () => playSound(200, 0.08, 'square'),
+  plant: () => playSound(400, 0.1),
+  water: () => playSound(600, 0.08),
+  harvest: () => playSound(800, 0.15),
+  buy: () => playSound(500, 0.1, 'square'),
+  levelUp: () => {
+    // Una pequeña melodía ascendente, más festiva
+    [523, 659, 784, 1046].forEach((freq, i) => {
+      setTimeout(() => playSound(freq, 0.15), i * 90);
+    });
+  },
+  quest: () => {
+    [660, 880].forEach((freq, i) => {
+      setTimeout(() => playSound(freq, 0.12), i * 100);
+    });
+  },
+};
+
 // --- Estado del jugador ---
 const player = {
-  x: 5,          // posición en columnas
-  y: 5,          // posición en filas
+  x: 5,          // posición LÓGICA en columnas (la casilla real donde estás)
+  y: 5,          // posición LÓGICA en filas
+  pixelX: 5 * TILE_SIZE, // posición VISUAL en píxeles (se desliza hacia x/y)
+  pixelY: 5 * TILE_SIZE,
   facing: 'down', // hacia dónde mira: 'up' | 'down' | 'left' | 'right'
 };
 
@@ -107,6 +154,39 @@ let selectedSeed = 'carrot'; // qué semilla se planta al pulsar Espacio
 let cropCount = 0;
 let coins = 10;
 let streak = 0; // racha de días JUGADOS SEGUIDOS (fechas reales, no días del juego)
+
+// --- Nivel y experiencia ---
+let level = 1;
+let xp = 0;
+
+// Cuánta XP hace falta para pasar del nivel actual al siguiente.
+// Sube un poco cada nivel, así cuesta más subir cuanto más alto estás.
+function xpNeededForLevel(lvl) {
+  return lvl * 20;
+}
+
+// XP que da cada acción del juego
+const XP_REWARDS = {
+  till: 1,
+  plant: 2,
+  water: 1,
+  harvest: 5,
+};
+
+// Suma XP y comprueba si con eso subes de nivel (puede subir varios
+// niveles de golpe si ganaste mucha XP de una vez)
+function addXP(amount) {
+  xp += amount;
+
+  while (xp >= xpNeededForLevel(level)) {
+    xp -= xpNeededForLevel(level);
+    level++;
+    const bonus = level * 10;
+    coins += bonus;
+    sounds.levelUp();
+    showToast(`⭐ ¡Nivel ${level}! +${bonus} monedas`, '#4527a0');
+  }
+}
 
 // ==========================================================
 // GUARDADO / CARGA
@@ -127,6 +207,10 @@ function getGameStateAsObject() {
     coins,
     streak,
     lastPlayedDate,
+    level,
+    xp,
+    completedQuests,
+    pumpkinsHarvested,
   };
 }
 
@@ -146,12 +230,18 @@ function loadGame() {
     map = state.map;
     player.x = state.player.x;
     player.y = state.player.y;
+    player.pixelX = state.player.x * TILE_SIZE;
+    player.pixelY = state.player.y * TILE_SIZE;
     player.facing = state.player.facing;
     day = state.day;
     cropCount = state.cropCount;
     coins = state.coins ?? 10;
     streak = state.streak ?? 0;
     lastPlayedDate = state.lastPlayedDate ?? null;
+    level = state.level ?? 1;
+    xp = state.xp ?? 0;
+    completedQuests = state.completedQuests ?? [];
+    pumpkinsHarvested = state.pumpkinsHarvested ?? 0;
 
     // seedCounts es nuevo: si la partida guardada es de una versión
     // vieja (tenía "seedCount" a secas), lo convertimos al nuevo formato
@@ -187,7 +277,6 @@ function loadGame() {
 // - Si es justo el día siguiente: la racha sube y te doy monedas de bonus.
 // - Si dejaste pasar más de un día: la racha se rompe y vuelve a 1.
 let lastPlayedDate = null;
-let streakMessage = null; // texto a mostrar en el aviso emergente, o null
 
 function todayString() {
   return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
@@ -213,11 +302,11 @@ function checkDailyStreak() {
       streak++;
       const bonus = streak * 5;
       coins += bonus;
-      streakMessage = `🔥 ¡Racha de ${streak} días! +${bonus} monedas`;
+      showToast(`🔥 ¡Racha de ${streak} días! +${bonus} monedas`, '#ff6f00');
     } else {
       // Dejaste pasar más de un día: se rompe la racha
       streak = 1;
-      streakMessage = 'Racha reiniciada. ¡Vuelve mañana para empezar otra!';
+      showToast('Racha reiniciada. ¡Vuelve mañana para empezar otra!', '#455a64');
     }
   }
 
@@ -225,6 +314,100 @@ function checkDailyStreak() {
   saveGame();
 }
 
+// Aviso emergente genérico (racha, nivel, misiones...). Se puede
+// llamar varias veces seguidas: cada llamada apila un mensaje nuevo.
+function showToast(message, color = '#ff6f00') {
+  const toast = document.getElementById('streak-toast');
+  toast.textContent = message;
+  toast.style.background = color;
+  toast.classList.add('visible');
+
+  clearTimeout(showToast._timer);
+  showToast._timer = setTimeout(() => {
+    toast.classList.remove('visible');
+  }, 4000);
+}
+
+// ==========================================================
+// MISIONES / LOGROS
+// ==========================================================
+// Cada misión tiene un id único, una descripción, una función
+// "progress" que calcula cuánto llevas hecho, un "target" (meta),
+// y una recompensa en monedas al completarla.
+const QUESTS = [
+  {
+    id: 'first_harvest',
+    description: 'Cosecha tu primer cultivo',
+    target: 1,
+    progress: () => cropCount,
+    reward: 15,
+  },
+  {
+    id: 'harvest_10',
+    description: 'Cosecha 10 cultivos en total',
+    target: 10,
+    progress: () => cropCount,
+    reward: 40,
+  },
+  {
+    id: 'reach_level_3',
+    description: 'Alcanza el nivel 3',
+    target: 3,
+    progress: () => level,
+    reward: 30,
+  },
+  {
+    id: 'grow_pumpkin',
+    description: 'Cosecha tu primera calabaza',
+    target: 1,
+    progress: () => pumpkinsHarvested,
+    reward: 25,
+  },
+  {
+    id: 'streak_3',
+    description: 'Consigue una racha de 3 días',
+    target: 3,
+    progress: () => streak,
+    reward: 50,
+  },
+];
+
+let completedQuests = []; // ids de misiones ya completadas
+let pumpkinsHarvested = 0; // contador aparte, para la misión de calabaza
+
+// Revisa todas las misiones activas y completa las que ya se cumplieron
+function checkQuests() {
+  QUESTS.forEach((quest) => {
+    if (completedQuests.includes(quest.id)) return; // ya estaba completa
+
+    if (quest.progress() >= quest.target) {
+      completedQuests.push(quest.id);
+      coins += quest.reward;
+      sounds.quest();
+      showToast(`✅ Misión cumplida: ${quest.description} (+${quest.reward} 🪙)`, '#2e7d32');
+    }
+  });
+
+  renderQuestList();
+}
+
+// Dibuja la lista de misiones en el panel lateral del HUD
+function renderQuestList() {
+  const list = document.getElementById('quest-list');
+  list.innerHTML = '';
+
+  QUESTS.forEach((quest) => {
+    const done = completedQuests.includes(quest.id);
+    const current = Math.min(quest.progress(), quest.target);
+
+    const item = document.createElement('li');
+    item.className = done ? 'quest-done' : '';
+    item.textContent = done
+      ? `✅ ${quest.description}`
+      : `⬜ ${quest.description} (${current}/${quest.target})`;
+    list.appendChild(item);
+  });
+}
 const dayCounterEl = document.getElementById('day-number');
 const timeIconEl = document.getElementById('time-icon');
 const carrotSeedCountEl = document.getElementById('carrot-seed-count');
@@ -232,6 +415,9 @@ const pumpkinSeedCountEl = document.getElementById('pumpkin-seed-count');
 const cropCountEl = document.getElementById('crop-count');
 const coinCountEl = document.getElementById('coin-count');
 const streakCountEl = document.getElementById('streak-count');
+const levelEl = document.getElementById('level-count');
+const xpBarFillEl = document.getElementById('xp-bar-fill');
+const xpLabelEl = document.getElementById('xp-label');
 const buyCarrotBtn = document.getElementById('buy-carrot-btn');
 const buyPumpkinBtn = document.getElementById('buy-pumpkin-btn');
 const seedSelectorEls = document.querySelectorAll('.seed-option');
@@ -243,6 +429,11 @@ function updateHUD() {
   cropCountEl.textContent = cropCount;
   coinCountEl.textContent = coins;
   streakCountEl.textContent = streak;
+
+  levelEl.textContent = level;
+  const needed = xpNeededForLevel(level);
+  xpBarFillEl.style.width = `${(xp / needed) * 100}%`;
+  xpLabelEl.textContent = `${xp} / ${needed} XP`;
 
   buyCarrotBtn.disabled = coins < CROP_TYPES.carrot.seedPrice;
   buyPumpkinBtn.disabled = coins < CROP_TYPES.pumpkin.seedPrice;
@@ -292,6 +483,10 @@ function drawSkyOverlay() {
 // INPUT: mover jugador e interactuar
 // ==========================================================
 document.addEventListener('keydown', (e) => {
+  // Los navegadores bloquean el audio hasta la primera interacción
+  // del usuario; nos aseguramos de "despertarlo" aquí.
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+
   switch (e.key) {
     case 'ArrowUp':
     case 'w':
@@ -341,8 +536,29 @@ function movePlayer(dx, dy, direction) {
   const targetTile = map[newY][newX];
   if (targetTile.decoration) return;
 
+  // Solo actualizamos la posición LÓGICA. La posición visual
+  // (pixelX/pixelY) se desliza sola hacia esta cada frame,
+  // ver updatePlayerVisualPosition() en el loop de animación.
   player.x = newX;
   player.y = newY;
+}
+
+// Hace que la posición visual del jugador (en píxeles) se acerque
+// suavemente a su posición lógica (en casillas) cada frame. Esto es
+// lo que da la sensación de "deslizarse" en vez de saltar de golpe.
+function updatePlayerVisualPosition() {
+  const targetX = player.x * TILE_SIZE;
+  const targetY = player.y * TILE_SIZE;
+
+  // 0.25 = qué tan rápido "alcanza" el destino (más alto = más rápido)
+  const smoothing = 0.25;
+  player.pixelX += (targetX - player.pixelX) * smoothing;
+  player.pixelY += (targetY - player.pixelY) * smoothing;
+
+  // Si ya está muy cerca, lo dejamos exacto (evita que quede
+  // temblando por decimales infinitesimales para siempre)
+  if (Math.abs(targetX - player.pixelX) < 0.5) player.pixelX = targetX;
+  if (Math.abs(targetY - player.pixelY) < 0.5) player.pixelY = targetY;
 }
 
 // Devuelve la casilla a la que el jugador está mirando
@@ -371,6 +587,9 @@ function interactWithTile() {
   if (tile.type === TILE_TYPES.GRASS) {
     // Labrar tierra
     tile.type = TILE_TYPES.TILLED;
+    sounds.till();
+    addXP(XP_REWARDS.till);
+    saveGame();
     return;
   }
 
@@ -382,6 +601,8 @@ function interactWithTile() {
       tile.growthStage = 0;
       tile.watered = false;
       seedCounts[selectedSeed]--;
+      sounds.plant();
+      addXP(XP_REWARDS.plant);
       updateHUD();
       saveGame();
     }
@@ -395,15 +616,23 @@ function interactWithTile() {
       // Cosechar: cada cultivo paga distinto según su sellValue
       cropCount++;
       coins += crop.sellValue;
+      if (tile.cropType === 'pumpkin') pumpkinsHarvested++;
+
       tile.type = TILE_TYPES.GRASS;
       tile.cropType = null;
       tile.growthStage = 0;
       tile.watered = false;
+
+      sounds.harvest();
+      addXP(XP_REWARDS.harvest);
       updateHUD();
+      checkQuests();
       saveGame();
     } else {
       // Regar (solo afecta si aún no está lista)
       tile.watered = true;
+      sounds.water();
+      addXP(XP_REWARDS.water);
       saveGame();
     }
     return;
@@ -592,8 +821,8 @@ function drawPlant(tile, x, y) {
 }
 
 function drawPlayer() {
-  const x = player.x * TILE_SIZE;
-  const y = player.y * TILE_SIZE;
+  const x = player.pixelX;
+  const y = player.pixelY;
   const cx = x + TILE_SIZE / 2;
   const cy = y + TILE_SIZE / 2;
 
@@ -643,7 +872,7 @@ function drawPlayer() {
 loadGame(); // si había partida guardada, la restauramos
 checkDailyStreak(); // revisamos si hoy suma o rompe la racha
 updateHUD();
-showStreakMessageIfAny();
+checkQuests(); // pinta el panel de misiones con el progreso actual
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   const confirmReset = confirm('¿Seguro que quieres borrar tu partida y empezar de nuevo?');
@@ -653,6 +882,8 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   map = createMap();
   player.x = 5;
   player.y = 5;
+  player.pixelX = 5 * TILE_SIZE;
+  player.pixelY = 5 * TILE_SIZE;
   player.facing = 'down';
   day = 1;
   seedCounts = { carrot: 5, pumpkin: 0 };
@@ -661,7 +892,12 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   coins = 10;
   streak = 0;
   lastPlayedDate = null;
+  level = 1;
+  xp = 0;
+  completedQuests = [];
+  pumpkinsHarvested = 0;
   updateHUD();
+  checkQuests();
 });
 
 buyCarrotBtn.addEventListener('click', () => buySeed('carrot'));
@@ -673,6 +909,7 @@ function buySeed(type) {
 
   coins -= price;
   seedCounts[type]++;
+  sounds.buy();
   updateHUD();
   saveGame();
 }
@@ -685,24 +922,10 @@ seedSelectorEls.forEach((el) => {
   });
 });
 
-// Muestra el aviso emergente de racha (si lo hay) y lo hace desaparecer solo
-function showStreakMessageIfAny() {
-  if (!streakMessage) return;
-
-  const toast = document.getElementById('streak-toast');
-  toast.textContent = streakMessage;
-  toast.classList.add('visible');
-
-  setTimeout(() => {
-    toast.classList.remove('visible');
-  }, 4000);
-
-  streakMessage = null;
-}
-
 // Loop de animación: redibuja continuamente para que el pulso del
 // cultivo maduro se vea fluido, sin depender de que pulses una tecla
 function animationLoop() {
+  updatePlayerVisualPosition();
   draw();
   requestAnimationFrame(animationLoop);
 }
