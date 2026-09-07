@@ -1,3 +1,28 @@
+/* ==========================================================
+   TOKENS DE DISEÑO
+   Todo el juego usa esta paleta fija. Antes cada panel tenía un
+   color inventado (morado, azul, verde, gris...) sin relación entre
+   sí; ahora todo sale de esta lista para que se vea como UN objeto,
+   no como piezas sueltas.
+   ========================================================== */
+:root {
+  --wood-dark: #2e2013;
+  --wood-mid: #6b4226;
+  --wood-light: #8a5a3c;
+  --wood-grain: #5a3a22;
+  --parchment: #f0e0c0;
+  --parchment-dark: #d9c397;
+  --ink: #3b2a1a;
+  --gold: #e0a72e;
+  --gold-light: #f5cc6b;
+  --moss: #7bab5e;
+  --moss-dark: #4f7a3a;
+  --rust: #a83e2c;
+  --rust-light: #c65a44;
+  --sky-dusk-top: #3c4a6b;
+  --sky-dusk-bottom: #1f2333;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -8,7 +33,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: radial-gradient(circle at top, #3c4a6b 0%, #1f2333 70%);
+  background: radial-gradient(circle at top, var(--sky-dusk-top) 0%, var(--sky-dusk-bottom) 70%);
   font-family: 'VT323', 'Trebuchet MS', Verdana, sans-serif;
 }
 
@@ -16,151 +41,204 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-}
-
-/* Estilo base compartido por los paneles tipo "cartel", así todo
-   el HUD se siente parte de un mismo conjunto visual */
-#hud,
-#shop,
-#seed-selector,
-#level-bar,
-#quest-panel,
-#upgrades-shop {
+  gap: 12px;
   width: 480px;
-  border-radius: 8px;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.35), inset 0 0 0 1px rgba(255,255,255,0.06);
 }
 
+/* ==========================================================
+   PANEL BASE — todo panel del juego (madera o pergamino)
+   comparte el mismo radio de esquina y la misma sombra, así se
+   leen como un mismo "sistema" en vez de piezas inventadas ad-hoc.
+   ========================================================== */
+.panel {
+  width: 100%;
+  border-radius: 10px;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.4);
+  padding: 12px 16px;
+}
+
+.wood-panel {
+  background:
+    repeating-linear-gradient(
+      100deg,
+      var(--wood-mid) 0px,
+      var(--wood-mid) 18px,
+      var(--wood-grain) 18px,
+      var(--wood-grain) 20px
+    );
+  border: 2px solid var(--wood-dark);
+  box-shadow:
+    0 6px 14px rgba(0, 0, 0, 0.4),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  color: var(--parchment);
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.parchment-panel {
+  background: var(--parchment);
+  border: 2px solid var(--wood-dark);
+  color: var(--ink);
+}
+
+.panel-divider {
+  height: 2px;
+  margin: 10px 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 0, 0, 0.35) 15%,
+    rgba(0, 0, 0, 0.35) 85%,
+    transparent
+  );
+}
+
+.panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.panel-label {
+  font-size: 16px;
+  opacity: 0.85;
+}
+
+.key-hint {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+/* ==========================================================
+   HUD (día, cosecha, monedas, racha, nivel)
+   ========================================================== */
 #hud {
   display: flex;
   justify-content: space-between;
-  color: #fff;
-  font-size: 22px;
-  background: linear-gradient(#5d4037, #4a3f35);
-  padding: 8px 16px;
-  border-radius: 10px 10px 0 0;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
+  align-items: center;
+  font-size: 24px;
 }
 
-#game-canvas {
-  border: 4px solid #4a3f35;
-  border-radius: 0 0 6px 6px;
-  image-rendering: pixelated;
-  background: #7cb342;
-  box-shadow: 0 8px 20px rgba(0,0,0,0.4);
+#inventory {
+  display: flex;
+  gap: 14px;
+  font-size: 20px;
 }
 
-#instructions {
-  color: #cfcfcf;
-  font-size: 18px;
-  text-align: center;
-  max-width: 480px;
-}
-
-#reset-btn {
-  background: #b71c1c;
-  color: #fff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 18px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 3px 0 #7f0000;
-  transition: transform 0.1s ease;
-}
-
-#reset-btn:hover {
-  background: #d32f2f;
-}
-
-#reset-btn:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 #7f0000;
-}
-
-#shop {
+#level-bar {
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #33691e;
-  color: #fff;
-  padding: 8px 14px;
   font-size: 18px;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
 }
 
-#buy-carrot-btn,
-#buy-pumpkin-btn,
-#buy-wheat-btn {
-  background: #fdd835;
-  color: #333;
-  border: none;
-  padding: 6px 12px;
+#xp-bar-track {
+  flex: 1;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.35);
   border-radius: 6px;
-  font-family: inherit;
-  font-size: 17px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 3px 0 #b8960a;
-  transition: transform 0.1s ease;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.4);
 }
 
-#buy-carrot-btn:hover,
-#buy-pumpkin-btn:hover,
-#buy-wheat-btn:hover {
-  background: #ffee58;
+#xp-bar-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--gold), var(--gold-light));
+  transition: width 0.3s ease;
+  box-shadow: 0 0 6px rgba(224, 167, 46, 0.7);
 }
 
-#buy-carrot-btn:active,
-#buy-pumpkin-btn:active,
-#buy-wheat-btn:active {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 #b8960a;
+/* ==========================================================
+   MARCO DEL CANVAS — con remaches en las esquinas, como un
+   cartel de madera de verdad en vez de un <canvas> pelado
+   ========================================================== */
+.canvas-frame {
+  position: relative;
+  padding: 10px;
+  border-radius: 12px;
+  background: linear-gradient(160deg, var(--wood-light), var(--wood-mid) 60%, var(--wood-dark));
+  border: 2px solid var(--wood-dark);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.5);
 }
 
-#buy-carrot-btn:disabled,
-#buy-pumpkin-btn:disabled,
-#buy-wheat-btn:disabled {
-  background: #9e9e9e;
-  color: #616161;
-  cursor: not-allowed;
-  box-shadow: none;
+.canvas-frame::before,
+.canvas-frame::after,
+.canvas-frame > canvas {
+  display: block;
 }
 
-#seed-selector {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #fff;
-  font-size: 17px;
-  background: #37474f;
-  padding: 8px 14px;
+/* Remaches decorativos: 4 elementos reales, uno por esquina.
+   (Más simple y fiable que intentar hacerlo con pseudo-elementos,
+   que solo dan 2 posiciones por elemento) */
+.rivet {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #ffe9b0, #a97a3c 70%, #5a3a22);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
 }
 
-.seed-option {
-  background: #455a64;
-  color: #fff;
-  border: 2px solid transparent;
-  padding: 6px 10px;
+.rivet-tl { top: 8px; left: 8px; }
+.rivet-tr { top: 8px; right: 8px; }
+.rivet-bl { bottom: 8px; left: 8px; }
+.rivet-br { bottom: 8px; right: 8px; }
+
+#game-canvas {
   border-radius: 6px;
+  image-rendering: pixelated;
+  background: #7cb342;
+  border: 2px solid var(--wood-dark);
+}
+
+/* ==========================================================
+   BOTONES — un único lenguaje de "botón físico prensable"
+   para todos los botones del juego, solo cambia el color base
+   ========================================================== */
+button {
   font-family: inherit;
   font-size: 16px;
   font-weight: bold;
+  border: none;
+  border-radius: 7px;
+  padding: 7px 12px;
   cursor: pointer;
-  transition: transform 0.1s ease, border-color 0.15s ease;
+  transition: transform 0.08s ease, filter 0.15s ease;
 }
 
-.seed-option:hover {
-  transform: translateY(-1px);
+button:active:not(:disabled) {
+  transform: translateY(2px);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  filter: grayscale(0.6) brightness(0.75);
+}
+
+/* Selector de semilla: pastillas sobre el tablón de madera */
+#seed-selector {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.seed-option {
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--parchment);
+  border: 2px solid transparent;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
+}
+
+.seed-option:hover:not(.locked) {
+  background: rgba(0, 0, 0, 0.35);
 }
 
 .seed-option.selected {
-  border-color: #ffee58;
-  background: #263238;
-  box-shadow: 0 0 8px rgba(255, 238, 88, 0.5);
+  border-color: var(--gold-light);
+  background: rgba(224, 167, 46, 0.25);
+  box-shadow: 0 0 10px rgba(245, 204, 107, 0.5), 0 3px 0 rgba(0, 0, 0, 0.35);
 }
 
 .seed-option.locked {
@@ -168,65 +246,95 @@ body {
   cursor: not-allowed;
 }
 
+/* Tienda y mejoras: mismo estilo de botón dorado, con azul solo
+   para diferenciar la ACCIÓN "mejora" sin romper la paleta */
+#shop,
 #upgrades-shop {
   display: flex;
-  align-items: center;
-  gap: 10px;
-  background: #01579b;
-  color: #fff;
-  padding: 8px 14px;
-  font-size: 18px;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#buy-carrot-btn,
+#buy-pumpkin-btn,
+#buy-wheat-btn {
+  background: linear-gradient(180deg, var(--gold-light), var(--gold));
+  color: var(--ink);
+  box-shadow: 0 3px 0 #a5760f;
+}
+
+#buy-carrot-btn:hover:not(:disabled),
+#buy-pumpkin-btn:hover:not(:disabled),
+#buy-wheat-btn:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 #buy-watering-can-btn {
-  background: #4fc3f7;
-  color: #01579b;
-  border: none;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-family: inherit;
-  font-size: 17px;
-  font-weight: bold;
-  cursor: pointer;
-  box-shadow: 0 3px 0 #0288d1;
-  transition: transform 0.1s ease;
+  background: linear-gradient(180deg, #7ec8e3, #3d8fb0);
+  color: #06222e;
+  box-shadow: 0 3px 0 #205a72;
 }
 
 #buy-watering-can-btn:hover:not(:disabled) {
-  background: #81d4fa;
+  filter: brightness(1.08);
 }
 
-#buy-watering-can-btn:active:not(:disabled) {
-  transform: translateY(2px);
-  box-shadow: 0 1px 0 #0288d1;
+#buy-watering-can-btn.owned {
+  background: linear-gradient(180deg, #a5d6a7, var(--moss-dark));
+  color: #0d2b0a;
+  filter: none;
 }
 
-#buy-watering-can-btn:disabled {
-  background: #9e9e9e;
-  color: #424242;
-  cursor: not-allowed;
-  box-shadow: none;
+/* ==========================================================
+   PANEL DE MISIONES (pergamino)
+   ========================================================== */
+#quest-title {
+  font-size: 20px;
+  font-weight: bold;
+  display: block;
+  margin-bottom: 8px;
 }
 
-#buy-watering-can-btn.owned:disabled {
-  background: #66bb6a;
-  color: #1b5e20;
+#quest-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 17px;
 }
 
+#quest-list li {
+  padding: 5px 10px;
+  border-radius: 5px;
+  background: rgba(59, 42, 26, 0.08);
+  border-left: 4px solid var(--gold);
+}
+
+#quest-list li.quest-done {
+  color: var(--moss-dark);
+  text-decoration: line-through;
+  opacity: 0.7;
+  border-left-color: var(--moss);
+}
+
+/* ==========================================================
+   AVISO EMERGENTE (racha, nivel, cofre...)
+   ========================================================== */
 #streak-toast {
   position: fixed;
   top: 20px;
   left: 50%;
   transform: translateX(-50%) translateY(-20px);
-  background: #ff6f00;
-  color: #fff;
+  background: var(--gold);
+  color: var(--ink);
   font-family: 'VT323', monospace;
   font-size: 20px;
   font-weight: bold;
   padding: 10px 18px;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
   opacity: 0;
   pointer-events: none;
   transition: opacity 0.3s ease, transform 0.3s ease;
@@ -238,67 +346,23 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
-#level-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+/* ==========================================================
+   PIE: instrucciones y botón de reset
+   ========================================================== */
+#instructions {
+  color: #cfcfcf;
+  font-size: 16px;
+  text-align: center;
+}
+
+#reset-btn {
+  background: linear-gradient(180deg, var(--rust-light), var(--rust));
   color: #fff;
-  font-size: 17px;
-  background: #4527a0;
-  padding: 6px 14px;
-  text-shadow: 1px 1px 2px rgba(0,0,0,0.4);
-}
-
-#xp-bar-track {
-  flex: 1;
-  height: 12px;
-  background: rgba(255,255,255,0.15);
-  border-radius: 6px;
-  overflow: hidden;
-  border: 1px solid rgba(255,255,255,0.3);
-}
-
-#xp-bar-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #7e57c2, #ffca28);
-  transition: width 0.3s ease;
-  box-shadow: 0 0 6px rgba(255, 202, 40, 0.6);
-}
-
-#quest-panel {
-  background: #263238;
-  color: #fff;
-  padding: 10px 14px;
+  box-shadow: 0 3px 0 #6e2415;
+  padding: 8px 18px;
   font-size: 17px;
 }
 
-#quest-title {
-  font-weight: bold;
-  display: block;
-  margin-bottom: 6px;
-  font-size: 19px;
-}
-
-#quest-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-#quest-list li {
-  padding: 4px 8px;
-  border-radius: 4px;
-  background: rgba(255,255,255,0.05);
-  border-left: 3px solid #ffca28;
-}
-
-#quest-list li.quest-done {
-  color: #a5d6a7;
-  text-decoration: line-through;
-  opacity: 0.7;
-  border-left-color: #66bb6a;
+#reset-btn:hover {
+  filter: brightness(1.1);
 }

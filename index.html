@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Mini Farm Game</title>
+  <title>Grow — Mini Farm Game</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
@@ -13,54 +13,81 @@
   <div id="game-container">
     <div id="streak-toast"></div>
 
-    <div id="hud">
-      <div id="day-counter"><span id="time-icon">☀️</span> Día <span id="day-number">1</span></div>
-      <div id="inventory">
-        🥕 Cosechado: <span id="crop-count">0</span>
-        &nbsp;|&nbsp;
-        🪙 Monedas: <span id="coin-count">10</span>
-        &nbsp;|&nbsp;
-        🔥 Racha: <span id="streak-count">0</span>
+    <!-- Un único tablón de madera agrupa día/monedas/racha + nivel,
+         en vez de dos cajas de colores distintos sin relación -->
+    <div class="panel wood-panel" id="hud-panel">
+      <div id="hud">
+        <div id="day-counter"><span id="time-icon">☀️</span> Día <span id="day-number">1</span></div>
+        <div id="inventory">
+          <span>🥕 <span id="crop-count">0</span></span>
+          <span>🪙 <span id="coin-count">10</span></span>
+          <span>🔥 <span id="streak-count">0</span></span>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div id="level-bar">
+        <span id="level-label">⭐ Nivel <span id="level-count">1</span></span>
+        <div id="xp-bar-track">
+          <div id="xp-bar-fill"></div>
+        </div>
+        <span id="xp-label">0 / 20 XP</span>
       </div>
     </div>
 
-    <div id="level-bar">
-      <span id="level-label">⭐ Nivel <span id="level-count">1</span></span>
-      <div id="xp-bar-track">
-        <div id="xp-bar-fill"></div>
+    <!-- Marco tipo cartel de madera con remaches en las esquinas -->
+    <div class="canvas-frame">
+      <span class="rivet rivet-tl"></span>
+      <span class="rivet rivet-tr"></span>
+      <span class="rivet rivet-bl"></span>
+      <span class="rivet rivet-br"></span>
+      <canvas id="game-canvas" width="480" height="320"></canvas>
+    </div>
+
+    <!-- Segundo tablón: semillas, tienda y mejoras, todo en el mismo
+         material para que se sientan parte de un mismo mueble -->
+    <div class="panel wood-panel" id="actions-panel">
+      <div class="panel-section">
+        <span class="panel-label">Semilla a plantar &nbsp;<span class="key-hint">1 · 2 · 3</span></span>
+        <div id="seed-selector">
+          <button class="seed-option" data-crop="carrot">🥕 Zanahoria <span id="carrot-seed-count">5</span></button>
+          <button class="seed-option" data-crop="pumpkin">🎃 Calabaza <span id="pumpkin-seed-count">0</span></button>
+          <button class="seed-option" data-crop="wheat">🌾 Trigo <span id="wheat-seed-count">0</span></button>
+        </div>
       </div>
-      <span id="xp-label">0 / 20 XP</span>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section">
+        <span class="panel-label">Tienda</span>
+        <div id="shop">
+          <button id="buy-carrot-btn">🥕 Zanahoria — 3 🪙</button>
+          <button id="buy-pumpkin-btn">🎃 Calabaza — 6 🪙</button>
+          <button id="buy-wheat-btn">🔒 Trigo dorado (nivel 5)</button>
+        </div>
+      </div>
+
+      <div class="panel-divider"></div>
+
+      <div class="panel-section">
+        <span class="panel-label">Mejoras</span>
+        <div id="upgrades-shop">
+          <button id="buy-watering-can-btn">💧 Regadera de área — 60 🪙</button>
+        </div>
+      </div>
     </div>
 
-    <canvas id="game-canvas" width="480" height="320"></canvas>
-
-    <div id="seed-selector">
-      <span>Semilla a plantar (o pulsa 1 / 2 / 3):</span>
-      <button class="seed-option" data-crop="carrot">🥕 Zanahoria (<span id="carrot-seed-count">5</span>)</button>
-      <button class="seed-option" data-crop="pumpkin">🎃 Calabaza (<span id="pumpkin-seed-count">0</span>)</button>
-      <button class="seed-option" data-crop="wheat">🌾 Trigo (<span id="wheat-seed-count">0</span>)</button>
-    </div>
-
-    <div id="shop">
-      <span>Tienda:</span>
-      <button id="buy-carrot-btn">🥕 Semilla zanahoria (3 🪙)</button>
-      <button id="buy-pumpkin-btn">🎃 Semilla calabaza (6 🪙)</button>
-      <button id="buy-wheat-btn">🔒 Trigo dorado (nivel 5)</button>
-    </div>
-
-    <div id="upgrades-shop">
-      <span>Mejoras:</span>
-      <button id="buy-watering-can-btn">💧 Regadera de área (60 🪙)</button>
-    </div>
-
-    <div id="quest-panel">
+    <!-- Panel de pergamino: contraste intencional dentro de la misma
+         paleta (madera + pergamino), no un color suelto más -->
+    <div class="panel parchment-panel" id="quest-panel">
       <span id="quest-title">📜 Misiones</span>
       <ul id="quest-list"></ul>
     </div>
 
     <div id="instructions">
-      Muévete: <b>Flechas / WASD</b> &nbsp;|&nbsp;
-      Interactuar (labrar / plantar / regar / cosechar): <b>Espacio</b> &nbsp;|&nbsp;
+      Muévete: <b>Flechas / WASD</b> &nbsp;·&nbsp;
+      Interactuar: <b>Espacio</b> &nbsp;·&nbsp;
       Pasar día: <b>N</b>
     </div>
 
