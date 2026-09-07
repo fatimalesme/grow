@@ -35,6 +35,7 @@ const CROP_TYPES = {
     sellValue: 4,
     matureColor: '#ff9800',
     youngColor: '#a5d6a7',
+    unlockLevel: 1, // disponible desde el principio
   },
   pumpkin: {
     name: 'Calabaza',
@@ -44,6 +45,17 @@ const CROP_TYPES = {
     sellValue: 12,
     matureColor: '#e65100',
     youngColor: '#aed581',
+    unlockLevel: 1,
+  },
+  wheat: {
+    name: 'Trigo Dorado',
+    emoji: '🌾',
+    growDays: 8,
+    seedPrice: 12,
+    sellValue: 35,
+    matureColor: '#fbc02d',
+    youngColor: '#dce775',
+    unlockLevel: 5, // hay que llegar a nivel 5 para desbloquearlo
   },
 };
 
@@ -59,7 +71,8 @@ function createMap() {
         watered: false,
         growthStage: 0, // 0 = recién plantado, hasta growDays del cultivo = listo
         cropType: null, // 'carrot' | 'pumpkin' | null (qué está plantado aquí)
-        decoration: null, // 'tree' | 'rock' | null
+        golden: false, // true si el cultivo maduro salió "dorado" (vale x3)
+        decoration: null, // 'tree' | 'rock' | 'chest' | null
         // "Semilla" fija para las matitas de hierba decorativas: se
         // calcula UNA vez al crear el mapa, no en cada frame, para que
         // no parpadeen/cambien de sitio constantemente al redibujar
@@ -217,6 +230,18 @@ const sounds = {
       setTimeout(() => playSound(freq, 0.12), i * 100);
     });
   },
+  golden: () => {
+    // Un brillo de arpegio, para que se note que es especial
+    [784, 988, 1175, 1568].forEach((freq, i) => {
+      setTimeout(() => playSound(freq, 0.12), i * 60);
+    });
+  },
+  chest: () => {
+    [440, 554, 659, 880].forEach((freq, i) => {
+      setTimeout(() => playSound(freq, 0.13), i * 80);
+    });
+  },
+  combo: () => playSound(1046, 0.06, 'square'),
 };
 
 // --- Estado del jugador ---
@@ -230,11 +255,24 @@ const player = {
 
 // --- Estado general del juego ---
 let day = 1;
-let seedCounts = { carrot: 5, pumpkin: 0 }; // cuántas semillas de cada tipo tenemos
+let seedCounts = { carrot: 5, pumpkin: 0, wheat: 0 }; // cuántas semillas de cada tipo tenemos
 let selectedSeed = 'carrot'; // qué semilla se planta al pulsar Espacio
 let cropCount = 0;
 let coins = 10;
 let streak = 0; // racha de días JUGADOS SEGUIDOS (fechas reales, no días del juego)
+
+// --- Mejoras de herramientas (compras únicas y permanentes) ---
+let upgrades = { areaWatering: false };
+const AREA_WATERING_PRICE = 60;
+
+// --- Combo de cosecha ---
+// Si cosechas dos cultivos con menos de COMBO_WINDOW_MS entre uno y
+// otro, el combo sube y ganas más monedas por cada cosecha. Si tardas
+// más que eso, se reinicia. Premia jugar rápido y de forma activa.
+let combo = 0;
+let lastHarvestTime = 0;
+const COMBO_WINDOW_MS = 2500;
+const MAX_COMBO = 5;
 
 // --- Nivel y experiencia ---
 let level = 1;
@@ -292,6 +330,9 @@ function getGameStateAsObject() {
     xp,
     completedQuests,
     pumpkinsHarvested,
+    upgrades,
+    wheatHarvested,
+    chestsOpened,
   };
 }
 
@@ -323,13 +364,17 @@ function loadGame() {
     xp = state.xp ?? 0;
     completedQuests = state.completedQuests ?? [];
     pumpkinsHarvested = state.pumpkinsHarvested ?? 0;
+    upgrades = state.upgrades ?? { areaWatering: false };
+    wheatHarvested = state.wheatHarvested ?? 0;
+    chestsOpened = state.chestsOpened ?? 0;
 
     // seedCounts es nuevo: si la partida guardada es de una versión
     // vieja (tenía "seedCount" a secas), lo convertimos al nuevo formato
     if (state.seedCounts) {
       seedCounts = state.seedCounts;
+      if (seedCounts.wheat === undefined) seedCounts.wheat = 0; // partidas de antes del trigo
     } else if (typeof state.seedCount === 'number') {
-      seedCounts = { carrot: state.seedCount, pumpkin: 0 };
+      seedCounts = { carrot: state.seedCount, pumpkin: 0, wheat: 0 };
     }
 
     // Asegurar que las casillas viejas (de antes de tener cropType)
@@ -357,9 +402,7 @@ function loadGame() {
 // - Si es el mismo día: no pasa nada, ya contaste hoy.
 // - Si es justo el día siguiente: la racha sube y te doy monedas de bonus.
 // - Si dejaste pasar más de un día: la racha se rompe y vuelve a 1.
-let lastPlayedDate = null;
-
-function todayString() {
+let lastPlayedDate = null;function todayString() {
   return new Date().toISOString().slice(0, 10); // 'YYYY-MM-DD'
 }
 
@@ -451,10 +494,26 @@ const QUESTS = [
     progress: () => streak,
     reward: 50,
   },
+  {
+    id: 'harvest_wheat',
+    description: 'Cosecha tu primer trigo dorado',
+    target: 1,
+    progress: () => wheatHarvested,
+    reward: 40,
+  },
+  {
+    id: 'find_chest',
+    description: 'Encuentra y abre un cofre',
+    target: 1,
+    progress: () => chestsOpened,
+    reward: 20,
+  },
 ];
 
 let completedQuests = []; // ids de misiones ya completadas
 let pumpkinsHarvested = 0; // contador aparte, para la misión de calabaza
+let wheatHarvested = 0; // contador aparte, para la misión de trigo dorado
+let chestsOpened = 0; // cuántos cofres se han abierto en total
 
 // Revisa todas las misiones activas y completa las que ya se cumplieron
 function checkQuests() {
@@ -493,6 +552,7 @@ const dayCounterEl = document.getElementById('day-number');
 const timeIconEl = document.getElementById('time-icon');
 const carrotSeedCountEl = document.getElementById('carrot-seed-count');
 const pumpkinSeedCountEl = document.getElementById('pumpkin-seed-count');
+const wheatSeedCountEl = document.getElementById('wheat-seed-count');
 const cropCountEl = document.getElementById('crop-count');
 const coinCountEl = document.getElementById('coin-count');
 const streakCountEl = document.getElementById('streak-count');
@@ -501,12 +561,16 @@ const xpBarFillEl = document.getElementById('xp-bar-fill');
 const xpLabelEl = document.getElementById('xp-label');
 const buyCarrotBtn = document.getElementById('buy-carrot-btn');
 const buyPumpkinBtn = document.getElementById('buy-pumpkin-btn');
+const buyWheatBtn = document.getElementById('buy-wheat-btn');
+const buyWateringCanBtn = document.getElementById('buy-watering-can-btn');
+const wheatSeedOptionEl = document.querySelector('.seed-option[data-crop="wheat"]');
 const seedSelectorEls = document.querySelectorAll('.seed-option');
 
 function updateHUD() {
   dayCounterEl.textContent = day;
   carrotSeedCountEl.textContent = seedCounts.carrot;
   pumpkinSeedCountEl.textContent = seedCounts.pumpkin;
+  wheatSeedCountEl.textContent = seedCounts.wheat;
   cropCountEl.textContent = cropCount;
   coinCountEl.textContent = coins;
   streakCountEl.textContent = streak;
@@ -518,6 +582,25 @@ function updateHUD() {
 
   buyCarrotBtn.disabled = coins < CROP_TYPES.carrot.seedPrice;
   buyPumpkinBtn.disabled = coins < CROP_TYPES.pumpkin.seedPrice;
+
+  // El trigo dorado está bloqueado hasta nivel 5: lo mostramos con
+  // candado en vez de precio hasta que llegues a ese nivel
+  const wheatUnlocked = level >= CROP_TYPES.wheat.unlockLevel;
+  buyWheatBtn.disabled = !wheatUnlocked || coins < CROP_TYPES.wheat.seedPrice;
+  buyWheatBtn.textContent = wheatUnlocked
+    ? `🌾 Semilla trigo dorado (${CROP_TYPES.wheat.seedPrice} 🪙)`
+    : `🔒 Trigo dorado (nivel ${CROP_TYPES.wheat.unlockLevel})`;
+  wheatSeedOptionEl.classList.toggle('locked', !wheatUnlocked);
+
+  // Botón de mejora de la regadera: una vez comprada, queda marcada
+  // como adquirida para siempre (mejora permanente)
+  if (upgrades.areaWatering) {
+    buyWateringCanBtn.textContent = '✅ Regadera de área (comprada)';
+    buyWateringCanBtn.disabled = true;
+    buyWateringCanBtn.classList.add('owned');
+  } else {
+    buyWateringCanBtn.disabled = coins < AREA_WATERING_PRICE;
+  }
 
   // Resaltar visualmente qué semilla está seleccionada para plantar
   seedSelectorEls.forEach((el) => {
@@ -615,6 +698,14 @@ document.addEventListener('keydown', (e) => {
       selectedSeed = 'pumpkin';
       updateHUD();
       break;
+    case '3':
+      if (level >= CROP_TYPES.wheat.unlockLevel) {
+        selectedSeed = 'wheat';
+        updateHUD();
+      } else {
+        showToast(`🔒 El trigo dorado se desbloquea en nivel ${CROP_TYPES.wheat.unlockLevel}`, '#455a64');
+      }
+      break;
   }
   draw();
 });
@@ -685,6 +776,12 @@ function interactWithTile() {
   if (!coords) return;
   const tile = map[coords.row][coords.col];
 
+  // Si hay un cofre, abrirlo tiene prioridad sobre cualquier otra cosa
+  if (tile.decoration === 'chest') {
+    openChest(coords, tile);
+    return;
+  }
+
   // Si hay un árbol o piedra, esa casilla no se puede labrar
   if (tile.decoration) return;
 
@@ -722,32 +819,149 @@ function interactWithTile() {
 
     if (tile.growthStage >= crop.growDays) {
       // Cosechar: cada cultivo paga distinto según su sellValue
-      cropCount++;
-      coins += crop.sellValue;
-      if (tile.cropType === 'pumpkin') pumpkinsHarvested++;
+      // --- Combo: cosechar rápido y seguido multiplica las monedas ---
+      const now = performance.now();
+      if (now - lastHarvestTime < COMBO_WINDOW_MS) {
+        combo = Math.min(combo + 1, MAX_COMBO);
+      } else {
+        combo = 1; // se te enfrió el combo, empiezas de cero
+      }
+      lastHarvestTime = now;
+      const comboMultiplier = 1 + (combo - 1) * 0.15; // +15% de monedas por cada nivel de combo
 
+      // --- Cultivo dorado: paga el triple si tuviste suerte ---
+      const goldenMultiplier = tile.golden ? 3 : 1;
+
+      const earned = Math.round(crop.sellValue * comboMultiplier * goldenMultiplier);
+
+      cropCount++;
+      coins += earned;
+      if (tile.cropType === 'pumpkin') pumpkinsHarvested++;
+      if (tile.cropType === 'wheat') wheatHarvested++;
+
+      const wasGolden = tile.golden;
       tile.type = TILE_TYPES.GRASS;
       tile.cropType = null;
       tile.growthStage = 0;
       tile.watered = false;
+      tile.golden = false;
 
-      sounds.harvest();
       addXP(XP_REWARDS.harvest);
-      spawnParticles(coords.col, coords.row, '#ffd54f', 14); // brillo dorado, más partículas por ser la acción "premio"
-      spawnFloatingText(coords.col, coords.row, `+${crop.sellValue} 🪙`, '#ffd54f');
       updateHUD();
       checkQuests();
       saveGame();
+
+      if (wasGolden) {
+        // Cosecha dorada: efecto especial, más vistoso que uno normal
+        sounds.golden();
+        spawnParticles(coords.col, coords.row, '#fff176', 22);
+        spawnFloatingText(coords.col, coords.row, `✨ x3 = +${earned} 🪙`, '#fff176');
+        showToast('✨ ¡Cultivo dorado! Vale el triple', '#f9a825');
+      } else {
+        sounds.harvest();
+        spawnParticles(coords.col, coords.row, '#ffd54f', 14);
+        spawnFloatingText(coords.col, coords.row, `+${earned} 🪙`, '#ffd54f');
+      }
+
+      // Aviso de combo, solo si ya llevas 2 o más seguidas
+      if (combo >= 2) {
+        sounds.combo();
+        spawnFloatingText(coords.col, coords.row - 0.6, `🔥 Combo x${combo}`, '#ff7043');
+      }
     } else {
-      // Regar (solo afecta si aún no está lista)
-      tile.watered = true;
+      // Regar (solo afecta si aún no está lista).
+      // Con la mejora "Regadera de área" comprada, riega un bloque de
+      // 3x3 casillas en vez de solo la que tienes justo delante.
+      if (upgrades.areaWatering) {
+        for (let dRow = -1; dRow <= 1; dRow++) {
+          for (let dCol = -1; dCol <= 1; dCol++) {
+            const r = coords.row + dRow;
+            const c = coords.col + dCol;
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+
+            const nearbyTile = map[r][c];
+            if (nearbyTile.type !== TILE_TYPES.PLANTED) continue;
+            const nearbyCrop = CROP_TYPES[nearbyTile.cropType];
+            if (nearbyTile.growthStage >= nearbyCrop.growDays) continue; // ya lista, no hace falta regar
+
+            nearbyTile.watered = true;
+            spawnParticles(c, r, '#4fc3f7', 4);
+          }
+        }
+      } else {
+        tile.watered = true;
+        spawnParticles(coords.col, coords.row, '#4fc3f7', 6); // gotitas azules
+      }
       sounds.water();
       addXP(XP_REWARDS.water);
-      spawnParticles(coords.col, coords.row, '#4fc3f7', 6); // gotitas azules
       saveGame();
     }
     return;
   }
+}
+
+// Probabilidad de que un cultivo recién madurado salga "dorado"
+// (vale el triple). Es una recompensa variable a propósito: no sabes
+// cuándo va a tocar, así que cada cosecha tiene ese punto de sorpresa.
+const GOLDEN_CHANCE = 0.1;
+
+// ==========================================================
+// COFRES DEL TESORO
+// ==========================================================
+// Cada día que pasa hay una probabilidad de que aparezca un cofre
+// en algún punto libre del mapa. Si lo encuentras y te acercas a
+// interactuar, te da una recompensa sorpresa (monedas + semillas).
+const CHEST_SPAWN_CHANCE = 0.35;
+
+function spawnChestIfDue() {
+  // Si ya hay un cofre esperando en el mapa, no generamos otro encima
+  const alreadyHasChest = map.some((row) => row.some((t) => t.decoration === 'chest'));
+  if (alreadyHasChest) return;
+
+  if (Math.random() > CHEST_SPAWN_CHANCE) return;
+
+  // Buscamos todas las casillas de hierba libres (sin labrar, sin
+  // decoración) para poner el cofre en un sitio válido
+  const candidates = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const tile = map[row][col];
+      if (tile.type === TILE_TYPES.GRASS && !tile.decoration) {
+        candidates.push({ row, col });
+      }
+    }
+  }
+  if (candidates.length === 0) return;
+
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  map[pick.row][pick.col].decoration = 'chest';
+}
+
+// Abre el cofre: da una recompensa sorpresa y hace desaparecer la decoración
+function openChest(coords, tile) {
+  tile.decoration = null;
+  chestsOpened++;
+
+  const coinReward = 15 + Math.floor(Math.random() * 36); // entre 15 y 50
+  const bonusSeed = Math.random() < 0.5 ? 'carrot' : 'pumpkin';
+
+  coins += coinReward;
+  seedCounts[bonusSeed] += 2;
+  addXP(10);
+
+  sounds.chest();
+  spawnParticles(coords.col, coords.row, '#ffd54f', 20);
+  spawnFloatingText(
+    coords.col,
+    coords.row,
+    `🎁 +${coinReward} 🪙 +2 ${CROP_TYPES[bonusSeed].emoji}`,
+    '#ffd54f'
+  );
+  showToast('🎁 ¡Encontraste un cofre!', '#f9a825');
+
+  updateHUD();
+  checkQuests();
+  saveGame();
 }
 
 // Avanza un día: las plantas regadas crecen, y se "resetea" el riego
@@ -758,11 +972,19 @@ function nextDay() {
       const tile = map[row][col];
       if (tile.type === TILE_TYPES.PLANTED && tile.watered) {
         const maxGrowth = CROP_TYPES[tile.cropType].growDays;
+        const wasReady = tile.growthStage >= maxGrowth;
         tile.growthStage = Math.min(tile.growthStage + 1, maxGrowth);
+
+        // Justo en el momento en que madura (antes no lo estaba,
+        // ahora sí), tiramos el dado para ver si sale dorado
+        if (!wasReady && tile.growthStage >= maxGrowth) {
+          tile.golden = Math.random() < GOLDEN_CHANCE;
+        }
       }
       tile.watered = false; // hay que regar cada día para seguir creciendo
     }
   }
+  spawnChestIfDue(); // puede que aparezca un cofre nuevo al pasar de día
   updateHUD();
   saveGame();
 }
@@ -846,11 +1068,13 @@ function drawTile(tile, col, row) {
     drawPlant(tile, x, y);
   }
 
-  // Dibujar decoración (árbol o piedra) encima de la hierba
+  // Dibujar decoración (árbol, piedra o cofre) encima de la hierba
   if (tile.decoration === 'tree') {
     drawTree(x, y);
   } else if (tile.decoration === 'rock') {
     drawRock(x, y);
+  } else if (tile.decoration === 'chest') {
+    drawChest(x, y);
   }
 }
 
@@ -897,6 +1121,38 @@ function drawRock(x, y) {
   ctx.beginPath();
   ctx.arc(cx - 4, cy - 2, 2.5, 0, Math.PI * 2);
   ctx.fill();
+}
+
+// Cofre del tesoro: caja de madera con un halo dorado pulsante,
+// para que se note a distancia que hay algo especial ahí
+function drawChest(x, y) {
+  const cx = x + TILE_SIZE / 2;
+  const cy = y + TILE_SIZE / 2;
+  const pulse = Math.sin(performance.now() / 300) * 2;
+
+  // Halo brillante detrás, para llamar la atención desde lejos
+  ctx.fillStyle = 'rgba(255, 215, 64, 0.25)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 13 + pulse, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sombra
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(cx, y + TILE_SIZE - 4, 9, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Cuerpo de la caja
+  ctx.fillStyle = '#8d6e63';
+  ctx.fillRect(x + 7, y + 14, TILE_SIZE - 14, 11);
+
+  // Tapa
+  ctx.fillStyle = '#6d4c41';
+  ctx.fillRect(x + 6, y + 9, TILE_SIZE - 12, 6);
+
+  // Cerradura dorada
+  ctx.fillStyle = '#ffd54f';
+  ctx.fillRect(cx - 2, y + 13, 4, 5);
 }
 
 // Dibuja una plantita con tallo + hojas, y un efecto de "pulso" cuando ya
@@ -1018,7 +1274,7 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   player.pixelY = 5 * TILE_SIZE;
   player.facing = 'down';
   day = 1;
-  seedCounts = { carrot: 5, pumpkin: 0 };
+  seedCounts = { carrot: 5, pumpkin: 0, wheat: 0 };
   selectedSeed = 'carrot';
   cropCount = 0;
   coins = 10;
@@ -1028,18 +1284,39 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   xp = 0;
   completedQuests = [];
   pumpkinsHarvested = 0;
+  upgrades = { areaWatering: false };
+  wheatHarvested = 0;
+  chestsOpened = 0;
   updateHUD();
   checkQuests();
 });
 
 buyCarrotBtn.addEventListener('click', () => buySeed('carrot'));
 buyPumpkinBtn.addEventListener('click', () => buySeed('pumpkin'));
+buyWheatBtn.addEventListener('click', () => buySeed('wheat'));
+
+buyWateringCanBtn.addEventListener('click', () => {
+  if (upgrades.areaWatering) return; // ya la tienes, es una mejora única
+  if (coins < AREA_WATERING_PRICE) return;
+
+  coins -= AREA_WATERING_PRICE;
+  upgrades.areaWatering = true;
+  sounds.buy();
+  showToast('💧 ¡Regadera de área desbloqueada! Riega en 3x3', '#0288d1');
+  updateHUD();
+  saveGame();
+});
 
 function buySeed(type) {
-  const price = CROP_TYPES[type].seedPrice;
-  if (coins < price) return; // por seguridad, aunque el botón ya se desactiva
+  const crop = CROP_TYPES[type];
 
-  coins -= price;
+  if (level < crop.unlockLevel) {
+    showToast(`🔒 Se desbloquea en el nivel ${crop.unlockLevel}`, '#455a64');
+    return;
+  }
+  if (coins < crop.seedPrice) return; // por seguridad, aunque el botón ya se desactiva
+
+  coins -= crop.seedPrice;
   seedCounts[type]++;
   sounds.buy();
   updateHUD();

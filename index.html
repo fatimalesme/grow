@@ -35,15 +35,22 @@
     <canvas id="game-canvas" width="480" height="320"></canvas>
 
     <div id="seed-selector">
-      <span>Semilla a plantar (o pulsa 1 / 2):</span>
+      <span>Semilla a plantar (o pulsa 1 / 2 / 3):</span>
       <button class="seed-option" data-crop="carrot">🥕 Zanahoria (<span id="carrot-seed-count">5</span>)</button>
       <button class="seed-option" data-crop="pumpkin">🎃 Calabaza (<span id="pumpkin-seed-count">0</span>)</button>
+      <button class="seed-option" data-crop="wheat">🌾 Trigo (<span id="wheat-seed-count">0</span>)</button>
     </div>
 
     <div id="shop">
       <span>Tienda:</span>
       <button id="buy-carrot-btn">🥕 Semilla zanahoria (3 🪙)</button>
       <button id="buy-pumpkin-btn">🎃 Semilla calabaza (6 🪙)</button>
+      <button id="buy-wheat-btn">🔒 Trigo dorado (nivel 5)</button>
+    </div>
+
+    <div id="upgrades-shop">
+      <span>Mejoras:</span>
+      <button id="buy-watering-can-btn">💧 Regadera de área (60 🪙)</button>
     </div>
 
     <div id="quest-panel">
