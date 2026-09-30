@@ -263,6 +263,21 @@ let streak = 0; // racha de días JUGADOS SEGUIDOS (fechas reales, no días del 
 
 // --- Mejoras de herramientas (compras únicas y permanentes) ---
 let upgrades = { areaWatering: false };
+
+// ==========================================================
+// MERCADO — precios que cambian cada día
+// ==========================================================
+// Cada cultivo tiene hoy un multiplicador (0.8 a 1.3 aprox.) que se
+// vuelve a calcular al pasar de día. Así no siempre conviene vender
+// lo mismo: un día la zanahoria paga genial, otro día no tanto.
+let marketPrices = { carrot: 1, pumpkin: 1, wheat: 1 };
+
+function rollMarketPrices() {
+  Object.keys(CROP_TYPES).forEach((type) => {
+    // Número aleatorio entre 0.8 y 1.3, redondeado a 2 decimales
+    marketPrices[type] = Math.round((0.8 + Math.random() * 0.5) * 100) / 100;
+  });
+}
 const AREA_WATERING_PRICE = 60;
 
 // --- Combo de cosecha ---
@@ -333,6 +348,7 @@ function getGameStateAsObject() {
     upgrades,
     wheatHarvested,
     chestsOpened,
+    marketPrices,
   };
 }
 
@@ -367,6 +383,7 @@ function loadGame() {
     upgrades = state.upgrades ?? { areaWatering: false };
     wheatHarvested = state.wheatHarvested ?? 0;
     chestsOpened = state.chestsOpened ?? 0;
+    marketPrices = state.marketPrices ?? { carrot: 1, pumpkin: 1, wheat: 1 };
 
     // seedCounts es nuevo: si la partida guardada es de una versión
     // vieja (tenía "seedCount" a secas), lo convertimos al nuevo formato
@@ -547,6 +564,33 @@ function renderQuestList() {
       : `⬜ ${quest.description} (${current}/${quest.target})`;
     list.appendChild(item);
   });
+
+  // Insignia con el número de misiones pendientes, para que se note
+  // en la pestaña sin tener que entrar a mirar
+  const pending = QUESTS.length - completedQuests.length;
+  const badge = document.getElementById('quest-badge');
+  badge.textContent = pending > 0 ? pending : '';
+}
+
+// ==========================================================
+// PESTAÑAS (Tienda / Mejoras / Misiones)
+// ==========================================================
+// Solo un panel de contenido se muestra a la vez; el resto se oculta
+// con la clase .active (ver style.css). Al hacer clic en una pestaña,
+// quitamos "active" de todas y se la ponemos solo a la elegida.
+function setupTabs() {
+  const tabButtons = document.querySelectorAll('.tab-btn');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  tabButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      tabButtons.forEach((b) => b.classList.remove('active'));
+      tabContents.forEach((c) => c.classList.remove('active'));
+
+      btn.classList.add('active');
+      document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+    });
+  });
 }
 const dayCounterEl = document.getElementById('day-number');
 const timeIconEl = document.getElementById('time-icon');
@@ -605,6 +649,27 @@ function updateHUD() {
   // Resaltar visualmente qué semilla está seleccionada para plantar
   seedSelectorEls.forEach((el) => {
     el.classList.toggle('selected', el.dataset.crop === selectedSeed);
+  });
+
+  updateMarketStrip();
+}
+
+// Pinta el precio de venta de HOY para cada cultivo. Verde si hoy
+// paga más de lo normal, rojo si paga menos, para que se note de
+// un vistazo si conviene cosechar ya o esperar a otro día
+function updateMarketStrip() {
+  Object.keys(CROP_TYPES).forEach((type) => {
+    const el = document.getElementById(`market-${type}`);
+    if (!el) return;
+
+    const crop = CROP_TYPES[type];
+    const multiplier = marketPrices[type] || 1;
+    const todayPrice = Math.round(crop.sellValue * multiplier);
+
+    el.textContent = `${crop.emoji} ${todayPrice} 🪙`;
+    el.classList.remove('up', 'down');
+    if (multiplier > 1.05) el.classList.add('up');
+    else if (multiplier < 0.95) el.classList.add('down');
   });
 }
 
@@ -832,7 +897,13 @@ function interactWithTile() {
       // --- Cultivo dorado: paga el triple si tuviste suerte ---
       const goldenMultiplier = tile.golden ? 3 : 1;
 
-      const earned = Math.round(crop.sellValue * comboMultiplier * goldenMultiplier);
+      // --- Precio de mercado del día: cada cultivo vale un poco más
+      // o menos según el día, como en un mercado real ---
+      const marketMultiplier = marketPrices[tile.cropType] || 1;
+
+      const earned = Math.round(
+        crop.sellValue * comboMultiplier * goldenMultiplier * marketMultiplier
+      );
 
       cropCount++;
       coins += earned;
@@ -985,6 +1056,7 @@ function nextDay() {
     }
   }
   spawnChestIfDue(); // puede que aparezca un cofre nuevo al pasar de día
+  rollMarketPrices(); // los precios de venta cambian cada día
   updateHUD();
   saveGame();
 }
@@ -1257,10 +1329,12 @@ function drawPlayer() {
 // ==========================================================
 // INICIO
 // ==========================================================
-loadGame(); // si había partida guardada, la restauramos
+const hadSavedGame = loadGame(); // si había partida guardada, la restauramos
+if (!hadSavedGame) rollMarketPrices(); // partida nueva: precios del día 1
 checkDailyStreak(); // revisamos si hoy suma o rompe la racha
 updateHUD();
 checkQuests(); // pinta el panel de misiones con el progreso actual
+setupTabs(); // activa el cambio de pestañas Tienda / Mejoras / Misiones
 
 document.getElementById('reset-btn').addEventListener('click', () => {
   const confirmReset = confirm('¿Seguro que quieres borrar tu partida y empezar de nuevo?');
@@ -1287,6 +1361,7 @@ document.getElementById('reset-btn').addEventListener('click', () => {
   upgrades = { areaWatering: false };
   wheatHarvested = 0;
   chestsOpened = 0;
+  rollMarketPrices();
   updateHUD();
   checkQuests();
 });

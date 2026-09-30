@@ -6,37 +6,34 @@
   <title>Grow — Mini Farm Game</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=VT323&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <div id="game-container">
     <div id="streak-toast"></div>
 
-    <!-- Un único tablón de madera agrupa día/monedas/racha + nivel,
-         en vez de dos cajas de colores distintos sin relación -->
-    <div class="panel wood-panel" id="hud-panel">
+    <!-- HUD superior: siempre visible, es la info que importa a cada rato -->
+    <div class="panel" id="hud-panel">
       <div id="hud">
-        <div id="day-counter"><span id="time-icon">☀️</span> Día <span id="day-number">1</span></div>
+        <div id="day-counter"><span id="time-icon">☀️</span> Día <span id="day-number" class="pixel-num">1</span></div>
         <div id="inventory">
-          <span>🥕 <span id="crop-count">0</span></span>
-          <span>🪙 <span id="coin-count">10</span></span>
-          <span>🔥 <span id="streak-count">0</span></span>
+          <span class="stat-chip">🥕 <span id="crop-count" class="pixel-num">0</span></span>
+          <span class="stat-chip">🪙 <span id="coin-count" class="pixel-num">10</span></span>
+          <span class="stat-chip">🔥 <span id="streak-count" class="pixel-num">0</span></span>
         </div>
       </div>
 
-      <div class="panel-divider"></div>
-
       <div id="level-bar">
-        <span id="level-label">⭐ Nivel <span id="level-count">1</span></span>
+        <span id="level-label">⭐ Nv <span id="level-count" class="pixel-num">1</span></span>
         <div id="xp-bar-track">
           <div id="xp-bar-fill"></div>
         </div>
-        <span id="xp-label">0 / 20 XP</span>
+        <span id="xp-label" class="pixel-num">0 / 20 XP</span>
       </div>
     </div>
 
-    <!-- Marco tipo cartel de madera con remaches en las esquinas -->
+    <!-- Marco del canvas con remaches en las esquinas -->
     <div class="canvas-frame">
       <span class="rivet rivet-tl"></span>
       <span class="rivet rivet-tr"></span>
@@ -45,22 +42,31 @@
       <canvas id="game-canvas" width="480" height="320"></canvas>
     </div>
 
-    <!-- Segundo tablón: semillas, tienda y mejoras, todo en el mismo
-         material para que se sientan parte de un mismo mueble -->
-    <div class="panel wood-panel" id="actions-panel">
-      <div class="panel-section">
-        <span class="panel-label">Semilla a plantar &nbsp;<span class="key-hint">1 · 2 · 3</span></span>
-        <div id="seed-selector">
-          <button class="seed-option" data-crop="carrot">🥕 Zanahoria <span id="carrot-seed-count">5</span></button>
-          <button class="seed-option" data-crop="pumpkin">🎃 Calabaza <span id="pumpkin-seed-count">0</span></button>
-          <button class="seed-option" data-crop="wheat">🌾 Trigo <span id="wheat-seed-count">0</span></button>
-        </div>
+    <!-- Selector de semilla: va fuera de las pestañas porque se usa
+         todo el rato mientras juegas, no tiene sentido esconderlo -->
+    <div id="seed-selector">
+      <button class="seed-option crop-carrot" data-crop="carrot">🥕 <span id="carrot-seed-count" class="pixel-num">5</span></button>
+      <button class="seed-option crop-pumpkin" data-crop="pumpkin">🎃 <span id="pumpkin-seed-count" class="pixel-num">0</span></button>
+      <button class="seed-option crop-wheat" data-crop="wheat">🌾 <span id="wheat-seed-count" class="pixel-num">0</span></button>
+    </div>
+
+    <!-- Precio de venta de HOY para cada cultivo: cambia cada día -->
+    <div id="market-strip">
+      <span id="market-carrot" class="market-tag"></span>
+      <span id="market-pumpkin" class="market-tag"></span>
+      <span id="market-wheat" class="market-tag"></span>
+    </div>
+
+    <!-- Una sola tarjeta con pestañas: solo se ve el contenido de la
+         pestaña activa, así no queda todo amontonado en pantalla -->
+    <div class="panel" id="menu-card">
+      <div class="tab-bar">
+        <button class="tab-btn active" data-tab="shop">🛒 Tienda</button>
+        <button class="tab-btn" data-tab="upgrades">🔧 Mejoras</button>
+        <button class="tab-btn" data-tab="quests">📜 Misiones <span id="quest-badge" class="badge"></span></button>
       </div>
 
-      <div class="panel-divider"></div>
-
-      <div class="panel-section">
-        <span class="panel-label">Tienda</span>
+      <div class="tab-content active" id="tab-shop">
         <div id="shop">
           <button id="buy-carrot-btn">🥕 Zanahoria — 3 🪙</button>
           <button id="buy-pumpkin-btn">🎃 Calabaza — 6 🪙</button>
@@ -68,27 +74,22 @@
         </div>
       </div>
 
-      <div class="panel-divider"></div>
-
-      <div class="panel-section">
-        <span class="panel-label">Mejoras</span>
+      <div class="tab-content" id="tab-upgrades">
         <div id="upgrades-shop">
           <button id="buy-watering-can-btn">💧 Regadera de área — 60 🪙</button>
         </div>
       </div>
-    </div>
 
-    <!-- Panel de pergamino: contraste intencional dentro de la misma
-         paleta (madera + pergamino), no un color suelto más -->
-    <div class="panel parchment-panel" id="quest-panel">
-      <span id="quest-title">📜 Misiones</span>
-      <ul id="quest-list"></ul>
+      <div class="tab-content" id="tab-quests">
+        <ul id="quest-list"></ul>
+      </div>
     </div>
 
     <div id="instructions">
       Muévete: <b>Flechas / WASD</b> &nbsp;·&nbsp;
       Interactuar: <b>Espacio</b> &nbsp;·&nbsp;
-      Pasar día: <b>N</b>
+      Pasar día: <b>N</b> &nbsp;·&nbsp;
+      Semilla: <b>1 · 2 · 3</b>
     </div>
 
     <button id="reset-btn">Reiniciar partida</button>
