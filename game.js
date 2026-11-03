@@ -139,6 +139,33 @@ function spawnParticles(col, row, color, count = 8) {
   }
 }
 
+// --- Confeti: lluvia de papelitos de colores desde arriba del canvas ---
+// Reutiliza la misma lista "particles", pero con posiciones en píxeles
+// y colores variados, para celebrar momentos grandes (subir de nivel...)
+const CONFETTI_COLORS = ['#ffca28', '#ff8a80', '#9ccc65', '#4fc3f7', '#ba68c8', '#fff'];
+
+function spawnConfetti(count = 40) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: Math.random() * canvas.width,
+      y: -5 - Math.random() * 40,
+      vx: (Math.random() - 0.5) * 2,
+      vy: 1 + Math.random() * 2,
+      life: 1.6, // vive más que las partículas normales
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      size: 2 + Math.random() * 2.5,
+    });
+  }
+}
+
+// --- Temblor de pantalla: mientras shakeTime > 0, draw() mueve todo
+// un poquito al azar. Sube la "intensidad" y baja sola cada frame ---
+let shakeTime = 0;
+
+function shakeScreen(frames = 12) {
+  shakeTime = Math.max(shakeTime, frames);
+}
+
 // Texto que sube flotando y se desvanece (para +XP, +monedas, etc.)
 function spawnFloatingText(col, row, text, color = '#fff') {
   floatingTexts.push({
@@ -318,6 +345,8 @@ function addXP(amount) {
     const bonus = level * 10;
     coins += bonus;
     sounds.levelUp();
+    spawnConfetti(60);
+    shakeScreen(14);
     showToast(`⭐ ¡Nivel ${level}! +${bonus} monedas`, '#4527a0');
   }
 }
@@ -610,6 +639,17 @@ const buyWateringCanBtn = document.getElementById('buy-watering-can-btn');
 const wheatSeedOptionEl = document.querySelector('.seed-option[data-crop="wheat"]');
 const seedSelectorEls = document.querySelectorAll('.seed-option');
 
+let lastShownCoins = coins;
+let lastShownCrops = cropCount;
+
+// Reinicia la animación CSS .pop aunque ya estuviera puesta
+// (quitar clase -> forzar reflow -> volver a ponerla)
+function popElement(el) {
+  el.classList.remove('pop');
+  void el.offsetWidth;
+  el.classList.add('pop');
+}
+
 function updateHUD() {
   dayCounterEl.textContent = day;
   carrotSeedCountEl.textContent = seedCounts.carrot;
@@ -618,6 +658,14 @@ function updateHUD() {
   cropCountEl.textContent = cropCount;
   coinCountEl.textContent = coins;
   streakCountEl.textContent = streak;
+
+  // Si monedas o cosecha SUBIERON respecto a la última vez, el chip
+  // da un saltito (clase .pop). Ese pequeño "boing" es lo que hace
+  // que ganar monedas se sienta bien.
+  if (coins > lastShownCoins) popElement(coinCountEl.parentElement);
+  if (cropCount > lastShownCrops) popElement(cropCountEl.parentElement);
+  lastShownCoins = coins;
+  lastShownCrops = cropCount;
 
   levelEl.textContent = level;
   const needed = xpNeededForLevel(level);
@@ -841,6 +889,12 @@ function interactWithTile() {
   if (!coords) return;
   const tile = map[coords.row][coords.col];
 
+  // Si hay un trébol de la suerte justo delante, lo recogemos
+  if (clover && clover.col === coords.col && clover.row === coords.row) {
+    collectClover();
+    return;
+  }
+
   // Si hay un cofre, abrirlo tiene prioridad sobre cualquier otra cosa
   if (tile.decoration === 'chest') {
     openChest(coords, tile);
@@ -926,6 +980,8 @@ function interactWithTile() {
         // Cosecha dorada: efecto especial, más vistoso que uno normal
         sounds.golden();
         spawnParticles(coords.col, coords.row, '#fff176', 22);
+        spawnConfetti(30);
+        shakeScreen(8);
         spawnFloatingText(coords.col, coords.row, `✨ x3 = +${earned} 🪙`, '#fff176');
         showToast('✨ ¡Cultivo dorado! Vale el triple', '#f9a825');
       } else {
@@ -937,6 +993,7 @@ function interactWithTile() {
       // Aviso de combo, solo si ya llevas 2 o más seguidas
       if (combo >= 2) {
         sounds.combo();
+        if (combo >= 3) shakeScreen(5);
         spawnFloatingText(coords.col, coords.row - 0.6, `🔥 Combo x${combo}`, '#ff7043');
       }
     } else {
@@ -1062,10 +1119,104 @@ function nextDay() {
 }
 
 // ==========================================================
+// TRÉBOL DE LA SUERTE (evento aleatorio, no se guarda)
+// ==========================================================
+// De vez en cuando aparece un trébol brillante en una casilla de
+// hierba libre. Si te plantas delante y pulsas Espacio antes de que
+// desaparezca (CLOVER_LIFETIME_MS), te da un premio sorpresa.
+// No se guarda en localStorage a propósito: es algo del momento.
+const CLOVER_LIFETIME_MS = 12000;
+const CLOVER_CHECK_EVERY_MS = 8000;
+const CLOVER_SPAWN_CHANCE = 0.3;
+let clover = null; // { col, row, expiresAt } o null
+
+function maybeSpawnClover() {
+  if (clover) return;
+  if (Math.random() > CLOVER_SPAWN_CHANCE) return;
+
+  const candidates = [];
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const t = map[row][col];
+      const isPlayerHere = col === player.x && row === player.y;
+      if (t.type === TILE_TYPES.GRASS && !t.decoration && !isPlayerHere) {
+        candidates.push({ col, row });
+      }
+    }
+  }
+  if (candidates.length === 0) return;
+
+  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  clover = { ...pick, expiresAt: performance.now() + CLOVER_LIFETIME_MS };
+  showToast('🍀 ¡Ha aparecido un trébol de la suerte!', '#2e7d32');
+}
+
+setInterval(maybeSpawnClover, CLOVER_CHECK_EVERY_MS);
+
+// Premio: monedas + XP + a veces una semilla de regalo
+function collectClover() {
+  const reward = 10 + Math.floor(Math.random() * 21); // 10 a 30
+  coins += reward;
+  addXP(8);
+  if (Math.random() < 0.4) seedCounts.carrot++;
+
+  sounds.chest();
+  spawnParticles(clover.col, clover.row, '#9ccc65', 16);
+  spawnConfetti(25);
+  spawnFloatingText(clover.col, clover.row, `🍀 +${reward} 🪙`, '#c5e1a5');
+
+  clover = null;
+  updateHUD();
+  saveGame();
+}
+
+function drawClover() {
+  if (!clover) return;
+
+  // Si se pasó el tiempo, desaparece sin premio
+  if (performance.now() > clover.expiresAt) {
+    clover = null;
+    return;
+  }
+
+  const x = clover.col * TILE_SIZE + TILE_SIZE / 2;
+  const y = clover.row * TILE_SIZE + TILE_SIZE / 2;
+  const t = performance.now() / 250;
+  const bob = Math.sin(t) * 2; // sube y baja suave
+  const secondsLeft = (clover.expiresAt - performance.now()) / 1000;
+
+  // Parpadea cuando le quedan menos de 3 segundos (urgencia)
+  if (secondsLeft < 3 && Math.floor(performance.now() / 150) % 2 === 0) return;
+
+  // Halo verde brillante
+  ctx.fillStyle = 'rgba(165, 214, 167, 0.35)';
+  ctx.beginPath();
+  ctx.arc(x, y + bob, 13, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Emoji del trébol (más simple que dibujarlo hoja a hoja)
+  ctx.font = '18px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#fff';
+  ctx.fillText('🍀', x, y + bob);
+  ctx.textBaseline = 'alphabetic';
+}
+
+// ==========================================================
 // DIBUJADO
 // ==========================================================
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Si hay temblor activo, desplazamos todo el dibujo unos píxeles al
+  // azar (más fuerte al principio, se calma al acabar los frames)
+  ctx.save();
+  if (shakeTime > 0) {
+    const intensity = shakeTime * 0.35;
+    ctx.translate((Math.random() - 0.5) * intensity, (Math.random() - 0.5) * intensity);
+    shakeTime--;
+  }
 
   for (let row = 0; row < ROWS; row++) {
     for (let col = 0; col < COLS; col++) {
@@ -1073,9 +1224,12 @@ function draw() {
     }
   }
 
+  drawClover();
   drawPlayer();
   drawSkyOverlay();
   drawEffects();
+  ctx.restore();
+
   drawVignette();
 }
 
