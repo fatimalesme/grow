@@ -1,1 +1,26 @@
+name: Actividad Diaria Grow
+
+on:
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch:
+
+jobs:
+  commit-diario:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Registrar actividad
+        run: |
+          date >> registro.txt
+          git config --local user.email "fatylesme@gmail.com"
+          git config --local user.name "fatimalesme"
+          git add registro.txt
+          git commit -m "Actualización diaria"
+          git push
 
