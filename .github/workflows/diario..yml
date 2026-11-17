@@ -10,6 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: write
 
     steps:
       - name: Descargar repositorio
@@ -23,3 +24,6 @@ jobs:
           git add registro.txt
           git commit -m "Actualización diaria"
           git push
+
+      - name: Evitar pausa por 60 días
+        uses: gautamkrishnar/keepalive-workflow@v2
